@@ -1,9 +1,0 @@
-name = "schelling"
-uuid = "2066304b-3727-4318-84aa-f900e0ec35af"
-authors = ["Daniel Seara <dsseara@gmail.com>"]
-version = "0.1.0"
-
-[deps]
-ArgParse = "c7e460c6-2fb9-53a9-8c5b-16f535851c63"
-PyPlot = "d330b81b-6aea-500a-939a-2ce795aea3ee"
-StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
