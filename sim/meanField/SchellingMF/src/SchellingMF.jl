@@ -8,7 +8,7 @@ using HDF5
 using JSON
 using ProgressMeter
 
-export run_simulation, update!
+export run_simulation, update!, load_data
 
 # fourth order finite differences
 grad(Nx::Int64, dx::Float64) = diagm(-(Nx - 1) => [+2/3],
@@ -301,5 +301,30 @@ end
 function nan_check(x::Array{T, 1}) where T<:AbstractFloat
     return all(isfinite, x)
 end
+
+
+function load_data(savepath)
+    # load data
+    files = readdir(savepath, join=true)
+    params = JSON.parsefile(files[end])
+    N_saved = length(files) - 1
+
+    ϕA_array = Array{Float64}(undef, params["Nx"], N_saved)
+    ϕB_array = Array{Float64}(undef, params["Nx"], N_saved)
+    x_array = Array{Float64}(undef, params["Nx"])
+    t_array = Array{Float64}(undef, N_saved)
+    for (fidx, file) in enumerate(files[1:end-1])
+        h5open(file, "r") do d
+            ϕA_array[:, fidx] = read(d["data"], "phiA")
+            ϕB_array[:, fidx] = read(d["data"], "phiB")
+            t_array[fidx] = read(d["data"], "t")
+            if fidx == 1
+                x_array[:] = read(d["data"], "x")
+            end
+        end
+    end
+    return ϕA_array, ϕB_array, x_array, t_array, params
+end
+
 
 end
