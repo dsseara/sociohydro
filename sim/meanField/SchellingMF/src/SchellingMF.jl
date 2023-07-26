@@ -270,7 +270,11 @@ function run_simulation(ϕA::Array{T, 1}, ϕB::Array{T, 1}, t_init::T,
         t += dt
 
         if ii % snapshot == 0
-            save(ϕA, ϕB, x, t, ii, npad, savepath)
+            if nan_check(ϕA)
+                save(ϕA, ϕB, x, t, ii, npad, savepath)
+            else
+                throw(OverflowError("got nans"))
+            end
         end
     end
     return ϕA, ϕB, t
