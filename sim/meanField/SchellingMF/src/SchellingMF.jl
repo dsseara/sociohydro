@@ -52,9 +52,9 @@ fa(a::AbstractFloat, b::AbstractFloat) = a / (a + b)
 dfa_da(a::AbstractFloat, b::AbstractFloat) = +b / (a + b)^2
 dfa_db(a::AbstractFloat, b::AbstractFloat) = -a / (a + b)^2
 
-fb(a::AbstractFloat, b::AbstractFloat) = 4 * (a / (a + b)) * (1 - (a / (a + b)))
-dfb_da(a::AbstractFloat, b::AbstractFloat) = 4 * b * (b - a) / (a + b)^3
-dfb_db(a::AbstractFloat, b::AbstractFloat) = 4 * a * (a - b) / (a + b)^3
+fb(a::AbstractFloat, b::AbstractFloat) = (a / (a + b)) * (1 - (a / (a + b)))
+dfb_da(a::AbstractFloat, b::AbstractFloat) = b * (b - a) / (a + b)^3
+dfb_db(a::AbstractFloat, b::AbstractFloat) = a * (a - b) / (a + b)^3
 
 
 function fitness(ϕA::Array{T, 1}, ϕB::Array{T, 1},
