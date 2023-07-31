@@ -48,13 +48,13 @@ gradlap(Nx::Int64, dx::Float64) = diagm(-(Nx - 1) => [-13/8],
 
 # f(x::AbstractFloat) = x - 1
 # df(x::AbstractFloat) = 1
-fa(a::AbstractFloat, b::AbstractFloat) = a / (a + b)
-dfa_da(a::AbstractFloat, b::AbstractFloat) = +b / (a + b)^2
-dfa_db(a::AbstractFloat, b::AbstractFloat) = -a / (a + b)^2
+fa(a::AbstractFloat, b::AbstractFloat, c::AbstractFloat) = c * a / (a + b)
+dfa_da(a::AbstractFloat, b::AbstractFloat, c::AbstractFloat) = +c * b / (a + b)^2
+dfa_db(a::AbstractFloat, b::AbstractFloat, c::AbstractFloat) = -c * a / (a + b)^2
 
-fb(a::AbstractFloat, b::AbstractFloat) = (a / (a + b)) * (1 - (a / (a + b)))
-dfb_da(a::AbstractFloat, b::AbstractFloat) = b * (b - a) / (a + b)^3
-dfb_db(a::AbstractFloat, b::AbstractFloat) = a * (a - b) / (a + b)^3
+fb(a::AbstractFloat, b::AbstractFloat, c::AbstractFloat) = (a / (a + b)) * (c - (a / (a + b)))
+dfb_da(a::AbstractFloat, b::AbstractFloat, c::AbstractFloat) = b * (b * c - a * (2 - c)) / (a + b)^3
+dfb_db(a::AbstractFloat, b::AbstractFloat, c::AbstractFloat) = a * (a * (2 - c) - b * c) / (a + b)^3
 
 
 function fitness(ϕA::Array{T, 1}, ϕB::Array{T, 1},
@@ -70,14 +70,14 @@ function fitness(ϕA::Array{T, 1}, ϕB::Array{T, 1},
     # dπB_dϕB = @. df(ϕB)
 
     # fitness
-    πA = @. κ * fa(ϕA, ϕB)
-    πB = @. fb(ϕA, ϕB)
+    πA = @. fa(ϕA, ϕB, κ)
+    πB = @. fb(ϕA, ϕB, δ)
 
     # fitness derivatives
-    dπA_dϕA = @. κ * dfa_da(ϕA, ϕB)
-    dπA_dϕB = @. κ * dfa_db(ϕA, ϕB)
-    dπB_dϕA = @. dfb_da(ϕA, ϕB)
-    dπB_dϕB = @. dfb_db(ϕA, ϕB)
+    dπA_dϕA = @. dfa_da(ϕA, ϕB, κ)
+    dπA_dϕB = @. dfa_db(ϕA, ϕB, κ)
+    dπB_dϕA = @. dfb_da(ϕA, ϕB, δ)
+    dπB_dϕB = @. dfb_db(ϕA, ϕB, δ)
 
     # global fitness
     U = @. ϕA * πA + ϕB * πB
