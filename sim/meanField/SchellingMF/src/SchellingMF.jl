@@ -48,14 +48,20 @@ gradlap(Nx::Int64, dx::Float64) = diagm(-(Nx - 1) => [-13/8],
 
 # f(x::AbstractFloat) = x - 1
 # df(x::AbstractFloat) = 1
-fa(a::AbstractFloat, b::AbstractFloat, c::AbstractFloat) = c * a / (a + b)
-dfa_da(a::AbstractFloat, b::AbstractFloat, c::AbstractFloat) = +c * b / (a + b)^2
-dfa_db(a::AbstractFloat, b::AbstractFloat, c::AbstractFloat) = -c * a / (a + b)^2
+# fa(a::AbstractFloat, b::AbstractFloat, c::AbstractFloat) = c * a / (a + b)
+# dfa_da(a::AbstractFloat, b::AbstractFloat, c::AbstractFloat) = +c * b / (a + b)^2
+# dfa_db(a::AbstractFloat, b::AbstractFloat, c::AbstractFloat) = -c * a / (a + b)^2
 
-fb(a::AbstractFloat, b::AbstractFloat, c::AbstractFloat) = (a / (a + b)) * (c - (a / (a + b)))
-dfb_da(a::AbstractFloat, b::AbstractFloat, c::AbstractFloat) = b * (b * c - a * (2 - c)) / (a + b)^3
-dfb_db(a::AbstractFloat, b::AbstractFloat, c::AbstractFloat) = a * (a * (2 - c) - b * c) / (a + b)^3
+fa(a::AbstractFloat, b::AbstractFloat, c::AbstractFloat) = a + 1 - c * b
+dfa_da(a::AbstractFloat, b::AbstractFloat, c::AbstractFloat) = 1
+dfa_db(a::AbstractFloat, b::AbstractFloat, c::AbstractFloat) = -c * b
 
+# fb(a::AbstractFloat, b::AbstractFloat, c::AbstractFloat) = (a / (a + b)) * (c - (a / (a + b)))
+# dfb_da(a::AbstractFloat, b::AbstractFloat, c::AbstractFloat) = b * (b * c - a * (2 - c)) / (a + b)^3
+# dfb_db(a::AbstractFloat, b::AbstractFloat, c::AbstractFloat) = a * (a * (2 - c) - b * c) / (a + b)^3
+fb(a::AbstractFloat, b::AbstractFloat, c::AbstractFloat) = b + a * c - a^2
+dfb_da(a::AbstractFloat, b::AbstractFloat, c::AbstractFloat) = c - 2 * a
+dfb_db(a::AbstractFloat, b::AbstractFloat, c::AbstractFloat) = 1
 
 function fitness(ϕA::Array{T, 1}, ϕB::Array{T, 1},
                  δ::T, κ::T) where T<:AbstractFloat
