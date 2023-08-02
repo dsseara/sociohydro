@@ -166,23 +166,28 @@ function move!(state::Matrix{Int64},
     Gs = gain(state, from, tos, alpha, delta, kappa, capacity, Nx)
     
     # calculate probability of moving using Glauber-like rule
-    probs = glauber_prob(Gs, temp, dt)
+    gprobs = glauber_prob(Gs, temp, dt)
 
-    # probs = [w * g for (w, g) in zip(weights, gprobs)]
+    probs = [w * g for (w, g) in zip(weights, gprobs)]
     # probs ./= sum(probs)
 
-    # draw a random number to select whether to move or not
-    i = 1
-    p = ps[i]
-    while r > p
-        i += 1
-        p += ps[i]
-    end
+    # use random number to select whether to move or not
+    idx = findfirst(cumsum(probs) .> r)
 
-    if i <= length(tos)
+    if !isnothing(idx)
         state[from] -= 1
-        state[tos[i]] += 1
+        state[tos[idx]] += 1
     end
+    # p = probs[i]
+    # while r > p
+    #     i += 1
+    #     p += probs[i]
+    # end
+
+    # if i <= length(tos)
+    #     state[from] -= 1
+    #     state[tos[i]] += 1
+    # end
 
     # if r < prob_to_move
     #     state[from] -= 1
@@ -320,8 +325,8 @@ energy minimization
 function glauber_prob(ΔGs::Array{T, 1},
                       temp::T, dt::T) where T<:AbstractFloat
 
-    # get probability of each move, plus not making a move
-    ps = Array{Float64}(undef, length(ΔGs) + 1)
+    # get probability of each move
+    ps = Array{Float64}(undef, length(ΔGs))
 
     for (gidx, ΔG) in enumerate(ΔGs)
         ps[gidx] = ifelse(temp == 0,
@@ -330,7 +335,7 @@ function glauber_prob(ΔGs::Array{T, 1},
     end
 
     # add probability of not moving
-    ps[end] = 1 - sum(ps[1:end-1])
+    # ps[end] = 1 - sum(ps[1:end-1])
 
     return ps
 end
@@ -417,7 +422,7 @@ function utility(n::Vector{Int64},
     # uA = 4 * (ϕA - capacity^(-1)) * (1 - (ϕA - capacity^(-1)))
     uA = (ϕA - capacity^(-1)) - 1
     # uB = 4 * (ϕB - capacity^(-1)) * (1 - (ϕB - capacity^(-1)))
-    uA = (ϕB - capacity^(-1)) - 1
+    uB = (ϕB - capacity^(-1)) - 1
     
     πs = [uA + (kappa - delta) * ϕB / 2,
                uB + (kappa + delta) * ϕA / 2]

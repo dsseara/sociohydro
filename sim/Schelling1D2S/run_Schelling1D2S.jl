@@ -18,10 +18,6 @@ function parse_commandline()
             help = "maximum occupancy of each lattice site"
             arg_type = Int
             default = 50
-        "--preferred_density", "-p"
-            help = "preferred density for asymmetric utility function"
-            arg_type = Float64
-            default = 0.5
         "--n_sweeps", "-n"
             help = "number of sweeps to run"
             arg_type = Int
@@ -29,15 +25,7 @@ function parse_commandline()
         "--temperature", "-T"
             help = "temperature used in Glauber rule"
             arg_type = Float64
-            default = 0.01
-        "--m", "-m"
-            help = "utility of rho = 1 state"
-            arg_type = Float64
-            default = 0.5
-        "--moveType"
-            help = "whether to move randomly or locally"
-            arg_type = String
-            default = "local"
+            default = 0.1
         "--alpha"
             help = "altruism parameter"
             arg_type = Float64
@@ -55,10 +43,14 @@ function parse_commandline()
             help = "non-reciprocity parameter"
             arg_type = Float64
             default = 0.0
-        "--kernel_size"
-            help = "size of region to measure densities"
-            arg_type = Int64
-            default = 1
+        "--kappa"
+            help = "reciprocity parameter"
+            arg_type = Float64
+            default = 0.0
+        "--dt"
+            help = "size of time step for sweep"
+            arg_type = Float64
+            default = 0.01
         "--savepath"
             help = "where to save output"
             arg_type = String
@@ -70,6 +62,7 @@ end
 
 
 function main()
+    println("here")
     parsed_args = parse_commandline()
     println(parsed_args)
     state = random_state(parsed_args)
