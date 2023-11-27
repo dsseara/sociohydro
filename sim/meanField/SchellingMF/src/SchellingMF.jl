@@ -46,15 +46,15 @@ gradlap(Nx::Int64, dx::Float64) = diagm(-(Nx - 1) => [-13/8],
                                         +(Nx - 1) => [+13 / 8]) ./ dx^3
 
 
-f(x::AbstractFloat) = x - 1
-df(x::AbstractFloat) = 1
+f(x::AbstractFloat, g::AbstractFloat) = g + 0 * x
+df(x::AbstractFloat) = 0
 
 
 function fitness(ϕA::Array{T, 1}, ϕB::Array{T, 1},
                  δ::T, κ::T) where T<:AbstractFloat
     # fitness
-    πA = @. f(ϕA) + (κ - δ) * ϕB / 2
-    πB = @. f(ϕB) + (κ + δ) * ϕA / 2
+    πA = @. f(ϕA, 0.25) + (κ - δ) * ϕB / 2
+    πB = @. f(ϕB, 0.25) + (κ + δ) * ϕA / 2
 
     # fitness derivatives
     dπA_dϕA = @. df(ϕA)
@@ -141,6 +141,29 @@ function compute_force(ϕA::Array{T, 1}, ϕB::Array{T, 1},
     return FA, FB
 end
 
+"""
+    Growth is given by
+
+    ∂ₜϕᵃ = fᵃ(ϕ⃗)
+    fᵃ(ϕ⃗) = ϕᵃ(πᵃ - ⟨π⟩)
+    ⟨π⟩ = ∑ ϕᵇ πᵇ(ϕ⃗) = U
+
+"""
+function growth(ϕA::Array{T, 1}, ϕB::Array{T, 1},
+                δ::T = 0.0, κ::T = 1.0) where T<:AbstractFloat
+    # preallocation
+    fA = similar(ϕA)
+    fB = similar(ϕB)
+
+    # # fitness dynamics
+    πA, πB, dπA_dϕA, dπA_dϕB, dπB_dϕA, dπB_dϕB, U, dU_dϕA, dU_dϕB = fitness(ϕA, ϕB, δ, κ)
+
+    fA = @. ϕA * (πA - U)
+    fB = @. ϕB * (πB - U)
+
+    return fA, fB
+end
+
 
 function update!(ϕA::Array{T, 1}, ϕB::Array{T, 1},
                  dx::T, Nx::Int64, dt::T;
@@ -151,9 +174,12 @@ function update!(ϕA::Array{T, 1}, ϕB::Array{T, 1},
                            α=α, δ=δ, κ=κ,
                            temp=temp, Γ=Γ)
     
+    # get growth
+    gA, gB = growth(ϕA, ϕB, δ, κ)
+
     # update
-    ϕA += dt * FA
-    ϕB += dt * FB
+    ϕA += dt * (FA + gA)
+    ϕB += dt * (FB + gB)
 
     return ϕA, ϕB
 end
