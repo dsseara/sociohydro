@@ -41,14 +41,6 @@ export run_simulation, update!
 f(x::AbstractFloat) = x - 1
 df(x::AbstractFloat) = 1
 
-function rk4(field::Array{T, 2}, dt::T, force::Function) where T<:AbstractFloat
-    k1 = dt * force(field)
-    k2 = dt * force(field + 0.5 * k1)
-    k3 = dt * force(field + 0.5 * k2)
-    k4 = dt * force(field + k3)
-    return field + (k1 + 2 * k2 + 2 * k3 + k4) / 6
-end
-
 function calc_grad(field::Array{T, 2}, dx::T, periodic::Bool) where T<:AbstractFloat
     ∇xfield = similar(field)
     ∇yfield = similar(field)
@@ -232,6 +224,51 @@ function calc_div(fieldx::Array{T, 2}, fieldy::Array{T, 2}, dx::T, periodic::Boo
     ∇xfieldy, ∇yfieldy = calc_grad(fieldy, dx, periodic)
     return ∇xfieldx + ∇yfieldy
 end
+
+
+function calc_J(ϕA::Array{T, 2}, ϕB::Array{T, 2}, dx::T, periodic::Bool,
+                utility_func::Function, D::T, Γ::T) where T<:AbstractFloat
+    # preallocation
+    JAx = similar(ϕA)
+    JAy = similar(ϕA)
+    JBx = similar(ϕB)
+    JBy = similar(ϕB)
+
+    πA, πB = utility_func(ϕA, ϕB)
+    ∇xπA, ∇yπA = calc_grad(uA, dx, periodic)
+    ∇xπB, ∇yπB = calc_grad(uB, dx, periodic)
+    ∇xϕA, ∇yϕA = calc_grad(ϕA, dx, periodic)
+    ∇xϕB, ∇yϕB = calc_grad(ϕB, dx, periodic)
+    ∇³xϕA, ∇³yϕA = calc_grad3(ϕA, dx, periodic)
+    ϕBxxx, ϕBxxy = calc_grad3(ϕB, dx, periodic)
+
+    JAx = -D * ∇xϕA + ϕA * ∇xπA + Γ * ϕA * ∇³xϕA
+    JAy = -D * ∇yϕA + ϕA * ∇yπA + Γ * ϕA * ∇³yϕA
+    JBx = -D * ∇xϕB + ϕB * ∇xπB + Γ * ϕB * ∇³xϕB
+    JBy = -D * ∇yϕB + ϕB * ∇yπB + Γ * ϕB * ∇³yϕB
+
+    return JAx, JAy, JBx, JBy
+end
+
+
+function calc_force(ϕA::Array{T, 2}, ϕB::Array{T, 2}, dx::T, periodic::Bool,
+                    utility_func::Function, D::T, Γ::T) where T<:AbstractFloat
+
+    JAx, JAy, JBx, JBy = calc_J(ϕA, ϕB, dx, periodic, utility_func, D, Γ)
+    FA = -calc_div(JAx, JAy, dx, periodic)
+    FB = -calc_div(JBx, JBy, dx, periodic)
+
+    return FA, FB
+end
+
+function rk4(field::Array{T, 2}, dt::T, force::Function) where T<:AbstractFloat
+    k1 = dt * force(field)
+    k2 = dt * force(field + 0.5 * k1)
+    k3 = dt * force(field + 0.5 * k2)
+    k4 = dt * force(field + k3)
+    return field + (k1 + 2 * k2 + 2 * k3 + k4) / 6
+end
+
 
 function fitness(ϕA::Array{T, 1}, ϕB::Array{T, 1},
                  δ::T, κ::T) where T<:AbstractFloat
