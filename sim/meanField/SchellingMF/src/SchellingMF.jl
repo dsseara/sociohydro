@@ -10,44 +10,221 @@ using ProgressMeter
 
 export run_simulation, update!
 
-# fourth order finite differences
-grad(Nx::Int64, dx::Float64) = diagm(-(Nx - 1) => [+2/3],
-                                  -(Nx - 2) => -(1/12) * ones(2),
-                                  -2 => (1/12) * ones(Nx - 2),
-                                  -1 => -(2/3) * ones(Nx - 1),
-                                  +1 => +(2/3) * ones(Nx - 1),
-                                  +2 => -(1/12) * ones(Nx - 2),
-                                  +(Nx - 2) => (1/12) * ones(2),
-                                  +(Nx - 1) => [-(2/3)]) ./ dx
+# # 2nd order finite differences
+# grad(Nx::Int64, dx::Float64) = diagm(-(Nx - 1) => [+1/2],
+#                                   -1 => -(1/2) * ones(Nx - 1),
+#                                   +1 => +(1/2) * ones(Nx - 1),
+#                                   +(Nx - 1) => [-(1/2)]) ./ dx
 
 
-lap(Nx::Int64, dx::Float64) = diagm(-(Nx - 1) => [+4/3],
-                                  -(Nx - 2) => -(1/12) * ones(2),
-                                  -2 => -(1/12) * ones(Nx - 2),
-                                  -1 => (4/3) * ones(Nx - 1),
-                                  0 => -(5/2) * ones(Nx),
-                                  +1 => (4/3) * ones(Nx - 1),
-                                  +2 => -(1/12) * ones(Nx - 2),
-                                  +(Nx - 2) => -(1/12) * ones(2),
-                                  +(Nx - 1) => [(4/3)]) ./ dx^2
+# lap(Nx::Int64, dx::Float64) = diagm(-(Nx - 1) => [1],
+#                                   -1 => 1 * ones(Nx - 1),
+#                                   0 => -2 * ones(Nx),
+#                                   +1 => 1 * ones(Nx - 1),
+#                                   +(Nx - 1) => [1]) ./ dx^2
 
 
-gradlap(Nx::Int64, dx::Float64) = diagm(-(Nx - 1) => [-13/8],
-                                        -(Nx - 2) => +1 * ones(2),
-                                        -(Nx - 3) => -(1/8) * ones(3),
-                                        -3 => +(1/8) * ones(Nx - 3),
-                                        -2 => -1 * ones(Nx - 2),
-                                        -1 => +(13/8) * ones(Nx - 1),
-                                        +1 => -(13/8) * ones(Nx - 1),
-                                        +2 => +1 * ones(Nx - 2),
-                                        +3 => -(1/8) * ones(Nx - 3),
-                                        +(Nx - 3) => +(1/8) * ones(3),
-                                        +(Nx - 2) => -1 * ones(2),
-                                        +(Nx - 1) => [+13 / 8]) ./ dx^3
+# gradlap(Nx::Int64, dx::Float64) = diagm(-(Nx - 1) => [-13/8],
+#                                         -(Nx - 2) => +1 * ones(2),
+#                                         -(Nx - 3) => -(1/8) * ones(3),
+#                                         -3 => +(1/8) * ones(Nx - 3),
+#                                         -2 => -1 * ones(Nx - 2),
+#                                         -1 => +(13/8) * ones(Nx - 1),
+#                                         +1 => -(13/8) * ones(Nx - 1),
+#                                         +2 => +1 * ones(Nx - 2),
+#                                         +3 => -(1/8) * ones(Nx - 3),
+#                                         +(Nx - 3) => +(1/8) * ones(3),
+#                                         +(Nx - 2) => -1 * ones(2),
+#                                         +(Nx - 1) => [+13 / 8]) ./ dx^3
 
 
 f(x::AbstractFloat) = x - 1
 df(x::AbstractFloat) = 1
+
+function rk4(field::Array{T, 2}, dt::T, force::Function) where T<:AbstractFloat
+    k1 = dt * force(field)
+    k2 = dt * force(field + 0.5 * k1)
+    k3 = dt * force(field + 0.5 * k2)
+    k4 = dt * force(field + k3)
+    return field + (k1 + 2 * k2 + 2 * k3 + k4) / 6
+end
+
+function calc_grad(field::Array{T, 2}, dx::T, periodic::Bool) where T<:AbstractFloat
+    ∇xfield = similar(field)
+    ∇yfield = similar(field)
+    Ny, Nx = size(field)
+
+    # central differences in center region
+    for x in 2:Nx-1
+        for y in 2:Ny-1
+            ∇xfield[y, x] = (field[y, x+1] - field[y, x-1]) / 2
+            ∇yfield[y, x] = (field[y+1, x] - field[y-1, x]) / 2
+        end
+    end
+
+    if periodic # do central differences at edges
+        ### corners ###
+        # bottom left
+        ∇xfield[1, 1] = (field[1, 2] - field[1, Nx]) / 2
+        ∇yfield[1, 1] = (field[2, 1] - field[Ny, 1]) / 2
+
+        # bottom right
+        ∇xfield[1, Nx] = (field[1, 1] - field[1, Nx-1]) / 2
+        ∇yfield[1, Nx] = (field[2, Nx] - field[Ny, Nx]) / 2
+
+        # top left
+        ∇xfield[Ny, 1] = (field[Ny, 2] - field[Ny, Nx]) / 2
+        ∇yfield[Ny, 1] = (field[1, 1] - field[Ny-1, 1]) / 2
+
+        # top right
+        ∇xfield[Ny, Nx] = (field[Ny, 1] - field[Ny, Nx-1]) / 2
+        ∇yfield[Ny, Nx] = (field[1, Nx] - field[Ny-1, Nx]) / 2
+
+        ### edges ###
+        # vertical
+        for y in 2:Ny-1
+            # left
+            ∇xfield[y, 1] = (field[y, 2] - field[y, Nx]) / 2
+            ∇yfield[y, 1] = (field[y+1, 1] - field[y-1, 1]) / 2
+            # right
+            ∇xfield[y, Nx] = (field[y, 1] - field[y, Nx-1]) / 2
+            ∇yfield[y, Nx] = (field[y+1, Nx] - field[y-1, Nx]) / 2
+        end
+        # horizontal
+        for x in 2:Nx-1
+            # bottom
+            ∇xfield[1, x] = (field[1, x+1] - field[1, x-1]) / 2
+            ∇yfield[1, x] = (field[2, x] - field[Ny, x]) / 2
+            # top
+            ∇xfield[Ny, x] = (field[Ny, x+1] - field[Ny, x-1]) / 2
+            ∇yfield[Ny, x] = (field[1, x] - field[Ny-1, x]) / 2
+        end
+    else # do forward/backward differences at ends
+        ### corners ###
+        # bottom left
+        ∇xfield[1, 1] = field[1, 2] - field[1, 1]
+        ∇yfield[1, 1] = field[2, 1] - field[1, 1]
+
+        # bottom right
+        ∇xfield[1, Nx] = field[1, Nx] - field[1, Nx-1]
+        ∇yfield[1, Nx] = field[2, Nx] - field[1, Nx]
+
+        # top left
+        ∇xfield[Ny, 1] = field[Ny, 2] - field[Ny, 1]
+        ∇yfield[Ny, 1] = field[Ny, 1] - field[Ny-1, 1]
+
+        # top right
+        ∇xfield[Ny, Nx] = field[Ny, Nx] - field[Ny, Nx-1]
+        ∇yfield[Ny, Nx] = field[Ny, Nx] - field[Ny-1, Nx]
+
+        ### edges ###
+        # vertical
+        for y in 2:Ny-1
+            # left
+            ∇xfield[y, 1] = field[y, 2] - field[y, 1]
+            ∇yfield[y, 1] = (field[y+1, 1] - field[y-1, 1]) / 2
+            # right
+            ∇xfield[y, Nx] = field[y, Nx] - field[y, Nx - 1]
+            ∇yfield[y, Nx] = (field[y+1, Nx] - field[y-1, Nx]) / 2
+        end
+        #horizontal
+        for x in 2:Nx-1
+            # bottom
+            ∇xfield[1, x] = (field[1, x+1] - field[1, x-1]) / 2
+            ∇yfield[1, x] = field[2, x] - field[1, x]  # forward
+            # top
+            ∇xfield[Ny, x] = (field[Ny, x+1] - field[Ny, x-1]) / 2
+            ∇yfield[Ny, x] = field[Ny, x] - field[Ny-1, x]  # backward
+        end
+    end
+
+    return ∇xfield ./ dx, ∇yfield ./ dx
+end
+
+function calc_lap(field::Array{T, 2}, dx::T, periodic::Bool) where T<:AbstractFloat
+    ∇²field = similar(field)
+    Ny, Nx = size(field)
+
+    # central differences in center region
+    # Do order: up, right, center, down, left
+    for x in 2:Nx-1
+        for y in 2:Ny-1
+            ∇²field[y, x] = field[y+1, x] + field[y, x+1] - 4 * field[y, x] + field[y-1, x] + field[y, x-1]
+        end
+    end
+
+    if periodic # do central differences at edges
+        ### corners ###
+        # bottom left
+        ∇²field[1, 1] = field[2, 1] + field[1, 2] - 4 * field[1, 1] + field[Ny, 1] + field[1, Nx]
+
+        # bottom right
+        ∇²field[1, Nx] = field[2, Nx] + field[1, 1] - 4 * field[1, Nx] + field[Ny, Nx] + field[1, Nx-1]
+
+        # top left
+        ∇²field[Ny, 1] = field[1, 1] + field[Ny, 2] - 4 * field[Ny, 1] + field[Ny-1, 1] + field[Ny, Nx]
+
+        # top right
+        ∇²field[Ny, Nx] = field[1, Nx] + field[Ny, 1] - 4 * field[Ny, Nx] + field[Ny-1, Nx] + field[Ny, Nx-1]
+
+        ### edges ###
+        # vertical
+        for y in 2:Ny-1
+            # left
+            ∇²field[y, 1] = field[y+1, 1] + field[y, 2] - 4 * field[y, 1] + field[y-1, 1] + field[y, Nx]
+            # right
+            ∇²field[y, Nx] = field[y+1, Nx] + field[y, 1] - 4 * field[y, Nx] + field[y-1, Nx] + field[y, Nx-1]
+        end
+
+        # horizontal
+        for x in 2:Nx-1
+            # bottom
+            ∇²field[1, x] = field[2, x] + field[1, x+1] - 4 * field[1, x] + field[Ny, x] + field[1, x-1]
+            # top
+            ∇²field[Ny, x] = field[1, x] + field[Ny, x+1] - 4 * field[Ny, x] + field[Ny-1, x] + field[Ny, x-1]
+        end
+
+    else # do forward/backward differences at edges
+        ### corners ###
+        # bottom left
+        ∇²field[1, 1] = field[3, 1] - 2 * field[2, 1] + 2 * field[1, 1] - 2 * field[1, 2] + field[1, 3]
+
+        # bottom right
+        ∇²field[1, Nx] = field[1, Nx-2] - 2 * field[1, Nx-1] + 2 * field[1, Nx] - 2 * field[2, Nx] + field[3, Nx]
+
+        # top left
+        ∇²field[Ny, 1] = field[Ny-2, 1] - 2 * field[Ny-1, 1] + 2 * field[Ny, 1] - 2 * field[Ny, 2] + field[Ny, 3]
+
+        # top right
+        ∇²field[Ny, Nx] = field[Ny, Nx-2] - 2 * field[Ny, Nx-1] + 2 * field[Ny, Nx] - 2 * field[Ny-1, Nx] + field[Ny-2, Nx]
+
+        ### edges ###
+        # vertical
+        for y in 2:Ny-1
+            # left
+            ∇²field[y, 1] = field[y+1, 1] - field[y, 1] + field[y-1, 1] - 2 * field[y, 2] + field[y, 3]
+            # right
+            ∇²field[y, Nx] = field[y+1, Nx] - field[y, Nx] + field[y-1, Nx] - 2 * field[y, Nx-1] + field[y, Nx-2]
+        end
+
+        # horizontal
+        for x in 2:Nx-1
+            # bottom
+            ∇²field[1, x] = field[1, x-1] - field[1, x] + field[1, x+1] - 2 * field[2, x] + field[3, x]
+            # top
+            ∇²field[Ny, x] = field[Ny, x-1] - field[Ny, x] + field[Ny, x+1] - 2 * field[Ny-1, x] + field[Ny-2, x]
+        end
+    end
+
+    return ∇²field ./ dx^2
+end
+
+
+function calc_grad3(field::Array{T, 2}, dx::T, periodic::Bool) where T<:AbstractFloat
+    ∇²field = calc_lap(field, dx, periodic)
+    ∇³xfield, ∇³yfield = calc_grad(∇²field, dx, periodic)
+    return ∇³xfield, ∇³yfield
+end
 
 
 function fitness(ϕA::Array{T, 1}, ϕB::Array{T, 1},
