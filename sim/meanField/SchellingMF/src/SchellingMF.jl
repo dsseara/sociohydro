@@ -227,6 +227,12 @@ function calc_grad3(field::Array{T, 2}, dx::T, periodic::Bool) where T<:Abstract
 end
 
 
+function calc_div(fieldx::Array{T, 2}, fieldy::Array{T, 2}, dx::T, periodic::Bool) where T<:AbstractFloat
+    ∇xfieldx, ∇yfieldx = calc_grad(fieldx, dx, periodic)
+    ∇xfieldy, ∇yfieldy = calc_grad(fieldy, dx, periodic)
+    return ∇xfieldx + ∇yfieldy
+end
+
 function fitness(ϕA::Array{T, 1}, ϕB::Array{T, 1},
                  δ::T, κ::T) where T<:AbstractFloat
     # fitness
