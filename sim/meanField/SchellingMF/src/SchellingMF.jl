@@ -213,28 +213,114 @@ end
 
 
 function calc_grad3(field::Array{T, 2}, dx::T, periodic::Bool) where T<:AbstractFloat
-    ∇²field = calc_lap(field, dx, periodic)
-    ∇³xfield, ∇³yfield = calc_grad(∇²field, dx, periodic)
-    return ∇³xfield, ∇³yfield
+    ∇³xfield = similar(field)
+    ∇³yfield = similar(field)
+    Ny, Nx = size(field)
+
+    # central differences in center region
+    for x in 3:Nx-2
+        for y in 3:Ny-2
+            ∇³xfield[y, x] = (field[y, x+2] - 2 * field[y, x+1] + 2 * field[y, x-1] - field[y, x-2]) / 2
+            ∇³yfield[y, x] = (field[y+2, x] - 2 * field[y+1, x]) / 2
+        end
+    end
+
+    if periodic # do central differences at edges
+        ### corners ###
+        # bottom left
+        ∇xfield[1, 1] = (field[1, 2] - field[1, Nx]) / 2
+        ∇yfield[1, 1] = (field[2, 1] - field[Ny, 1]) / 2
+
+        # bottom right
+        ∇xfield[1, Nx] = (field[1, 1] - field[1, Nx-1]) / 2
+        ∇yfield[1, Nx] = (field[2, Nx] - field[Ny, Nx]) / 2
+
+        # top left
+        ∇xfield[Ny, 1] = (field[Ny, 2] - field[Ny, Nx]) / 2
+        ∇yfield[Ny, 1] = (field[1, 1] - field[Ny-1, 1]) / 2
+
+        # top right
+        ∇xfield[Ny, Nx] = (field[Ny, 1] - field[Ny, Nx-1]) / 2
+        ∇yfield[Ny, Nx] = (field[1, Nx] - field[Ny-1, Nx]) / 2
+
+        ### edges ###
+        # vertical
+        for y in 2:Ny-1
+            # left
+            ∇xfield[y, 1] = (field[y, 2] - field[y, Nx]) / 2
+            ∇yfield[y, 1] = (field[y+1, 1] - field[y-1, 1]) / 2
+            # right
+            ∇xfield[y, Nx] = (field[y, 1] - field[y, Nx-1]) / 2
+            ∇yfield[y, Nx] = (field[y+1, Nx] - field[y-1, Nx]) / 2
+        end
+        # horizontal
+        for x in 2:Nx-1
+            # bottom
+            ∇xfield[1, x] = (field[1, x+1] - field[1, x-1]) / 2
+            ∇yfield[1, x] = (field[2, x] - field[Ny, x]) / 2
+            # top
+            ∇xfield[Ny, x] = (field[Ny, x+1] - field[Ny, x-1]) / 2
+            ∇yfield[Ny, x] = (field[1, x] - field[Ny-1, x]) / 2
+        end
+    else # do forward/backward differences at ends
+        ### corners ###
+        # bottom left
+        ∇xfield[1, 1] = field[1, 2] - field[1, 1]
+        ∇yfield[1, 1] = field[2, 1] - field[1, 1]
+
+        # bottom right
+        ∇xfield[1, Nx] = field[1, Nx] - field[1, Nx-1]
+        ∇yfield[1, Nx] = field[2, Nx] - field[1, Nx]
+
+        # top left
+        ∇xfield[Ny, 1] = field[Ny, 2] - field[Ny, 1]
+        ∇yfield[Ny, 1] = field[Ny, 1] - field[Ny-1, 1]
+
+        # top right
+        ∇xfield[Ny, Nx] = field[Ny, Nx] - field[Ny, Nx-1]
+        ∇yfield[Ny, Nx] = field[Ny, Nx] - field[Ny-1, Nx]
+
+        ### edges ###
+        # vertical
+        for y in 2:Ny-1
+            # left
+            ∇xfield[y, 1] = field[y, 2] - field[y, 1]
+            ∇yfield[y, 1] = (field[y+1, 1] - field[y-1, 1]) / 2
+            # right
+            ∇xfield[y, Nx] = field[y, Nx] - field[y, Nx - 1]
+            ∇yfield[y, Nx] = (field[y+1, Nx] - field[y-1, Nx]) / 2
+        end
+        #horizontal
+        for x in 2:Nx-1
+            # bottom
+            ∇xfield[1, x] = (field[1, x+1] - field[1, x-1]) / 2
+            ∇yfield[1, x] = field[2, x] - field[1, x]  # forward
+            # top
+            ∇xfield[Ny, x] = (field[Ny, x+1] - field[Ny, x-1]) / 2
+            ∇yfield[Ny, x] = field[Ny, x] - field[Ny-1, x]  # backward
+        end
+    end
+
+    return ∇xfield ./ dx, ∇yfield ./ dx
 end
 
 
 function calc_div(fieldx::Array{T, 2}, fieldy::Array{T, 2}, dx::T, periodic::Bool) where T<:AbstractFloat
-    ∇xfieldx, ∇yfieldx = calc_grad(fieldx, dx, periodic)
-    ∇xfieldy, ∇yfieldy = calc_grad(fieldy, dx, periodic)
-    return ∇xfieldx + ∇yfieldy
+    ∂x_fieldx, ∂y_fieldx = calc_grad(fieldx, dx, periodic)
+    ∂x_fieldy, ∂y_fieldy = calc_grad(fieldy, dx, periodic)
+    return ∂x_fieldx + ∂y_fieldy
 end
 
 
 function calc_J(ϕA::Array{T, 2}, ϕB::Array{T, 2}, dx::T, periodic::Bool,
-                utility_func::Function, D::T, Γ::T) where T<:AbstractFloat
+                utility_func::Function, params::Array{T, 1}, D::T, Γ::T) where T<:AbstractFloat
     # preallocation
     JAx = similar(ϕA)
     JAy = similar(ϕA)
     JBx = similar(ϕB)
     JBy = similar(ϕB)
 
-    πA, πB = utility_func(ϕA, ϕB)
+    πA, πB = utility_func(ϕA, ϕB, params)
     ∇xπA, ∇yπA = calc_grad(uA, dx, periodic)
     ∇xπB, ∇yπB = calc_grad(uB, dx, periodic)
     ∇xϕA, ∇yϕA = calc_grad(ϕA, dx, periodic)
@@ -252,14 +338,17 @@ end
 
 
 function calc_force(ϕA::Array{T, 2}, ϕB::Array{T, 2}, dx::T, periodic::Bool,
-                    utility_func::Function, D::T, Γ::T) where T<:AbstractFloat
+                    utility_func::Function, params::Array{T, 1}, D::T, Γ::T) where T<:AbstractFloat
 
-    JAx, JAy, JBx, JBy = calc_J(ϕA, ϕB, dx, periodic, utility_func, D, Γ)
+    JAx, JAy, JBx, JBy = calc_J(ϕA, ϕB, dx, periodic,
+                                utility_func, params,
+                                D, Γ)
     FA = -calc_div(JAx, JAy, dx, periodic)
     FB = -calc_div(JBx, JBy, dx, periodic)
 
     return FA, FB
 end
+
 
 function rk4(field::Array{T, 2}, dt::T, force::Function) where T<:AbstractFloat
     k1 = dt * force(field)
@@ -268,6 +357,67 @@ function rk4(field::Array{T, 2}, dt::T, force::Function) where T<:AbstractFloat
     k4 = dt * force(field + k3)
     return field + (k1 + 2 * k2 + 2 * k3 + k4) / 6
 end
+
+
+
+"""
+enforce_bcs(field::Array{T, 2})
+
+We are enfocing the following at the boundaries:
+    ∇ϕ⋅n̂ = 0
+    ∇³ϕ⋅n̂ = 0
+
+Let ϕ(j, i) denote the field at each grid point, with
+i = {1, Nx} and j = {1, Ny} denoting the edges.
+Given our central difference scheme, this translates to
+    ϕ(j, 0) = ϕ(j, 2)           left edge
+    ϕ(j, Nx+1) = ϕ(j, Nx-1)     right edge
+    ϕ(0, i) = ϕ(2, i)           bottom edge
+    ϕ(Ny+1, i) = ϕ(Ny-1, i)     top edge
+
+Corners need to be set appropriately to cancel
+out the 3rd order derivatives
+
+This function assumes that the field has
+been padded with 2 "ghost zones" on every edge
+"""
+function enforce_bcs!(field::Array{T, 2}; c::T = 0.1) where T<:AbstractFloat
+    Nx, Ny = size(field)
+
+    # real data starts at 3. g=ghost, r=real
+    # [1, 2, 3, ..., Nx-3, Nx-2, Nx-1, Nx]
+    # [g, g, r, ...,   r ,   r ,   g ,  g]
+
+    # go along x
+    for ii in 3:Nx-2
+        # bottom
+        field[1, ii] = field[5, ii]
+        field[2, ii] = field[4, ii]
+        # top
+        field[Ny, ii] = field[Ny-4, ii]
+        field[Ny-1, ii] = field[Ny-3, ii]
+    end
+    # go along y
+    for jj in 3:Ny-2
+        # left
+        field[jj, 1] = field[jj, 5]
+        field[jj, 2] = field[jj, 4]
+        # right
+        field[jj, Nx] = field[jj, Nx-4]
+        field[jj, Nx-1] = field[jj, Nx-3]
+    end
+
+    # corners
+    # bottom left
+    field[1, 1] = field[1, 2] = field[2, 1] = field[2, 2] = field[4, 4]
+    # bottom right
+    field[1, Nx] = field[1, Nx-1] = field[2, Nx] = field[2, Nx-1] = field[4, Nx-3]
+    # top left
+    field[Ny, 1] = field[Ny-1, 1] = field[Ny, 2] = field[Ny-1, 2] = field[Ny-3, 4]
+    # top right
+    field[Ny, Nx] = field[Ny-1, Nx] = field[Ny, Nx-1] = field[Ny-1, Nx-1] = field[Ny-3, Nx-3]
+end
+
 
 
 function fitness(ϕA::Array{T, 1}, ϕB::Array{T, 1},
