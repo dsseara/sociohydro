@@ -91,7 +91,9 @@ function calc_grad(field::Array{T, 2}, dx::T, periodic::Bool) where T<:AbstractF
             ∇xfield[Ny, x] = (field[Ny, x+1] - field[Ny, x-1]) / 2
             ∇yfield[Ny, x] = (field[1, x] - field[Ny-1, x]) / 2
         end
+
     else # do forward/backward differences at ends
+
         ### corners ###
         # bottom left
         ∇xfield[1, 1] = field[1, 2] - field[1, 1]
@@ -213,95 +215,9 @@ end
 
 
 function calc_grad3(field::Array{T, 2}, dx::T, periodic::Bool) where T<:AbstractFloat
-    ∇³xfield = similar(field)
-    ∇³yfield = similar(field)
-    Ny, Nx = size(field)
-
-    # central differences in center region
-    for x in 3:Nx-2
-        for y in 3:Ny-2
-            ∇³xfield[y, x] = (field[y, x+2] - 2 * field[y, x+1] + 2 * field[y, x-1] - field[y, x-2]) / 2
-            ∇³yfield[y, x] = (field[y+2, x] - 2 * field[y+1, x]) / 2
-        end
-    end
-
-    if periodic # do central differences at edges
-        ### corners ###
-        # bottom left
-        ∇xfield[1, 1] = (field[1, 2] - field[1, Nx]) / 2
-        ∇yfield[1, 1] = (field[2, 1] - field[Ny, 1]) / 2
-
-        # bottom right
-        ∇xfield[1, Nx] = (field[1, 1] - field[1, Nx-1]) / 2
-        ∇yfield[1, Nx] = (field[2, Nx] - field[Ny, Nx]) / 2
-
-        # top left
-        ∇xfield[Ny, 1] = (field[Ny, 2] - field[Ny, Nx]) / 2
-        ∇yfield[Ny, 1] = (field[1, 1] - field[Ny-1, 1]) / 2
-
-        # top right
-        ∇xfield[Ny, Nx] = (field[Ny, 1] - field[Ny, Nx-1]) / 2
-        ∇yfield[Ny, Nx] = (field[1, Nx] - field[Ny-1, Nx]) / 2
-
-        ### edges ###
-        # vertical
-        for y in 2:Ny-1
-            # left
-            ∇xfield[y, 1] = (field[y, 2] - field[y, Nx]) / 2
-            ∇yfield[y, 1] = (field[y+1, 1] - field[y-1, 1]) / 2
-            # right
-            ∇xfield[y, Nx] = (field[y, 1] - field[y, Nx-1]) / 2
-            ∇yfield[y, Nx] = (field[y+1, Nx] - field[y-1, Nx]) / 2
-        end
-        # horizontal
-        for x in 2:Nx-1
-            # bottom
-            ∇xfield[1, x] = (field[1, x+1] - field[1, x-1]) / 2
-            ∇yfield[1, x] = (field[2, x] - field[Ny, x]) / 2
-            # top
-            ∇xfield[Ny, x] = (field[Ny, x+1] - field[Ny, x-1]) / 2
-            ∇yfield[Ny, x] = (field[1, x] - field[Ny-1, x]) / 2
-        end
-    else # do forward/backward differences at ends
-        ### corners ###
-        # bottom left
-        ∇xfield[1, 1] = field[1, 2] - field[1, 1]
-        ∇yfield[1, 1] = field[2, 1] - field[1, 1]
-
-        # bottom right
-        ∇xfield[1, Nx] = field[1, Nx] - field[1, Nx-1]
-        ∇yfield[1, Nx] = field[2, Nx] - field[1, Nx]
-
-        # top left
-        ∇xfield[Ny, 1] = field[Ny, 2] - field[Ny, 1]
-        ∇yfield[Ny, 1] = field[Ny, 1] - field[Ny-1, 1]
-
-        # top right
-        ∇xfield[Ny, Nx] = field[Ny, Nx] - field[Ny, Nx-1]
-        ∇yfield[Ny, Nx] = field[Ny, Nx] - field[Ny-1, Nx]
-
-        ### edges ###
-        # vertical
-        for y in 2:Ny-1
-            # left
-            ∇xfield[y, 1] = field[y, 2] - field[y, 1]
-            ∇yfield[y, 1] = (field[y+1, 1] - field[y-1, 1]) / 2
-            # right
-            ∇xfield[y, Nx] = field[y, Nx] - field[y, Nx - 1]
-            ∇yfield[y, Nx] = (field[y+1, Nx] - field[y-1, Nx]) / 2
-        end
-        #horizontal
-        for x in 2:Nx-1
-            # bottom
-            ∇xfield[1, x] = (field[1, x+1] - field[1, x-1]) / 2
-            ∇yfield[1, x] = field[2, x] - field[1, x]  # forward
-            # top
-            ∇xfield[Ny, x] = (field[Ny, x+1] - field[Ny, x-1]) / 2
-            ∇yfield[Ny, x] = field[Ny, x] - field[Ny-1, x]  # backward
-        end
-    end
-
-    return ∇xfield ./ dx, ∇yfield ./ dx
+    ∇²field = calc_lap(field, dx, periodic)
+    ∇³xfield, ∇³yfield = calc_grad(∇²field, dx, periodic)
+    return ∇³xfield, ∇³yfield
 end
 
 
