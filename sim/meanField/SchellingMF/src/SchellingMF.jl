@@ -41,7 +41,8 @@ export run_simulation, update!
 f(x::AbstractFloat) = x - 1
 df(x::AbstractFloat) = 1
 
-function calc_grad(field::Array{T, 2}, dx::T, periodic::Bool) where T<:AbstractFloat
+function calc_grad(field::Array{T, 2}, dx::T, periodic::Bool;
+                   enforce_bcs::Bool=true, bcval::T = 0.0) where T<:AbstractFloat
     ∇xfield = similar(field)
     ∇yfield = similar(field)
     Ny, Nx = size(field)
@@ -93,7 +94,6 @@ function calc_grad(field::Array{T, 2}, dx::T, periodic::Bool) where T<:AbstractF
         end
 
     else # do forward/backward differences at ends
-
         ### corners ###
         # bottom left
         ∇xfield[1, 1] = field[1, 2] - field[1, 1]
@@ -125,10 +125,22 @@ function calc_grad(field::Array{T, 2}, dx::T, periodic::Bool) where T<:AbstractF
         for x in 2:Nx-1
             # bottom
             ∇xfield[1, x] = (field[1, x+1] - field[1, x-1]) / 2
-            ∇yfield[1, x] = field[2, x] - field[1, x]  # forward
+            ∇yfield[1, x] = field[2, x] - field[1, x]
             # top
             ∇xfield[Ny, x] = (field[Ny, x+1] - field[Ny, x-1]) / 2
-            ∇yfield[Ny, x] = field[Ny, x] - field[Ny-1, x]  # backward
+            ∇yfield[Ny, x] = field[Ny, x] - field[Ny-1, x]
+        end
+
+        # enforce boundary conditions
+        if enforce_bcs
+            # left
+            ∇xfield[1:end, 1] .= bcval
+            # right
+            ∇xfield[1:end, end] .= bcval
+            # bottom
+            ∇yfield[1, 1:end] .= bcval
+            # top
+            ∇yfield[end, 1:end] .= bcval
         end
     end
 
@@ -214,9 +226,12 @@ function calc_lap(field::Array{T, 2}, dx::T, periodic::Bool) where T<:AbstractFl
 end
 
 
-function calc_grad3(field::Array{T, 2}, dx::T, periodic::Bool) where T<:AbstractFloat
+function calc_grad3(field::Array{T, 2}, dx::T, periodic::Bool;
+                    enforce_bcs::Bool=true, bcval::T=0.0) where T<:AbstractFloat
     ∇²field = calc_lap(field, dx, periodic)
-    ∇³xfield, ∇³yfield = calc_grad(∇²field, dx, periodic)
+    ∇³xfield, ∇³yfield = calc_grad(∇²field, dx, periodic;
+                                   enforce_bcs=enforce_bcs,
+                                   bcval=bcval)
     return ∇³xfield, ∇³yfield
 end
 
@@ -285,11 +300,13 @@ We are enfocing the following at the boundaries:
 
 Let ϕ(j, i) denote the field at each grid point, with
 i = {1, Nx} and j = {1, Ny} denoting the edges.
-Given our central difference scheme, this translates to
-    ϕ(j, 0) = ϕ(j, 2)           left edge
-    ϕ(j, Nx+1) = ϕ(j, Nx-1)     right edge
-    ϕ(0, i) = ϕ(2, i)           bottom edge
-    ϕ(Ny+1, i) = ϕ(Ny-1, i)     top edge
+
+Given our central difference scheme, these BCs
+translate to (on the left edge)
+    ϕ(j, 1) = ϕ(j, 5)
+    ϕ(j, 2) = ϕ(j, 4)
+
+Other edges are done similarly.
 
 Corners need to be set appropriately to cancel
 out the 3rd order derivatives
@@ -299,10 +316,6 @@ been padded with 2 "ghost zones" on every edge
 """
 function enforce_bcs!(field::Array{T, 2}; c::T = 0.1) where T<:AbstractFloat
     Nx, Ny = size(field)
-
-    # real data starts at 3. g=ghost, r=real
-    # [1, 2, 3, ..., Nx-3, Nx-2, Nx-1, Nx]
-    # [g, g, r, ...,   r ,   r ,   g ,  g]
 
     # go along x
     for ii in 3:Nx-2
