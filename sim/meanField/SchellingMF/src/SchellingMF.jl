@@ -44,7 +44,7 @@ function calc_grad(field::Array{T, 2}, dx::T, periodic::Bool;
 
     if periodic # do central differences at edges
         # vertical edges, include corners
-        for x in [1:cs_halfwidth Nx-cs_halfwidth:Nx]
+        for x in [1:cs_halfwidth Nx-cs_halfwidth+1:Nx]
             for y in 1:Ny
                 indx = mod1.(x-cs_halfwidth:x+cs_halfwidth, Nx)
                 indy = mod1.(y-cs_halfwidth:y+cs_halfwidth, Ny)
@@ -53,7 +53,7 @@ function calc_grad(field::Array{T, 2}, dx::T, periodic::Bool;
             end
         end
         # horizontal edges, exclude corners
-        for y in [1:cs_halfwidth Ny-cs_halfwidth:Ny]
+        for y in [1:cs_halfwidth Ny-cs_halfwidth+1:Ny]
             for x in 1+cs_halfwidth:Nx-cs_halfwidth
                 indx = mod1.(x-cs_halfwidth:x+cs_halfwidth, Nx)
                 indy = mod1.(y-cs_halfwidth:y+cs_halfwidth, Ny)
@@ -67,7 +67,7 @@ function calc_grad(field::Array{T, 2}, dx::T, periodic::Bool;
         # left edge, forward difference on x, central on y
         for x in 1:cs_halfwidth
             for y in 1+cs_halfwidth:Ny-cs_halfwidth
-                indx = x:x+fs_width
+                indx = x:x+fs_width-1
                 indy = y-cs_halfwidth:y+cs_halfwidth
                 ∇xfield[y, x] = sum(field[y, indx] .* forward_stencil)
                 ∇yfield[y, x] = sum(field[indy, x] .* central_stencil)
@@ -76,7 +76,7 @@ function calc_grad(field::Array{T, 2}, dx::T, periodic::Bool;
         # right edge, backward difference on x, central on y
         for x in Nx-cs_halfwidth+1:Nx
             for y in 1+cs_halfwidth:Ny-cs_halfwidth
-                indx = x-bs_width:x
+                indx = x-bs_width+1:x
                 indy = y-cs_halfwidth:y+cs_halfwidth
                 ∇xfield[y, x] = sum(field[y, indx] .* backward_stencil)
                 ∇yfield[y, x] = sum(field[indy, x] .* central_stencil)
@@ -86,7 +86,7 @@ function calc_grad(field::Array{T, 2}, dx::T, periodic::Bool;
         for y in 1:cs_halfwidth
             for x in 1+cs_halfwidth:Nx-cs_halfwidth
                 indx = x-cs_halfwidth:x+cs_halfwidth
-                indy = y:y+fs_width
+                indy = y:y+fs_width-1
                 ∇xfield[y, x] = sum(field[y, indx] .* central_stencil)
                 ∇yfield[y, x] = sum(field[indy, x] .* forward_stencil)
             end
@@ -95,7 +95,7 @@ function calc_grad(field::Array{T, 2}, dx::T, periodic::Bool;
         for y in Ny-cs_halfwidth+1:Ny
             for x in 1+cs_halfwidth:Nx-cs_halfwidth
                 indx = x-cs_halfwidth:x+cs_halfwidth
-                indy = y-bs_width:y
+                indy = y-bs_width+1:y
                 ∇xfield[y, x] = sum(field[y, indx] .* central_stencil)
                 ∇yfield[y, x] = sum(field[indy, x] .* backward_stencil)
             end
@@ -106,8 +106,8 @@ function calc_grad(field::Array{T, 2}, dx::T, periodic::Bool;
         # forward difference for x and y
         for x in 1:cs_halfwidth
             for y in 1:cs_halfwidth
-                indx = x:x+fs_width
-                indy = y:y+fs_width
+                indx = x:x+fs_width-1
+                indy = y:y+fs_width-1
                 ∇xfield[y, x] = sum(field[y, indx] .* forward_stencil)
                 ∇yfield[y, x] = sum(field[indy, x] .* forward_stencil)
             end
@@ -117,8 +117,8 @@ function calc_grad(field::Array{T, 2}, dx::T, periodic::Bool;
         # backward difference for x, forward difference for y
         for x in Nx-cs_halfwidth+1:Nx
             for y in 1:cs_halfwidth
-                indx = x-bs_width:x
-                indy = y:y+fs_width
+                indx = x-bs_width+1:x
+                indy = y:y+fs_width-1
                 ∇xfield[y, x] = sum(field[y, indx] .* backward_stencil)
                 ∇yfield[y, x] = sum(field[indy, x] .* forward_stencil)
             end
@@ -128,8 +128,8 @@ function calc_grad(field::Array{T, 2}, dx::T, periodic::Bool;
         # forward difference for x, backward difference for y
         for x in 1:cs_halfwidth
             for y in Ny-cs_halfwidth+1:Ny
-                indx = x:x+fs_width
-                indy = y-bs_width:y
+                indx = x:x+fs_width-1
+                indy = y-bs_width+1:y
                 ∇xfield[y, x] = sum(field[y, indx] .* forward_stencil)
                 ∇yfield[y, x] = sum(field[indy, x] .* backward_stencil)
             end
@@ -139,8 +139,8 @@ function calc_grad(field::Array{T, 2}, dx::T, periodic::Bool;
         # backward difference for x and y
         for x in Nx-cs_halfwidth+1:Nx
             for y in Ny-cs_halfwidth+1:Ny
-                indx = x-bs_width:x
-                indy = y-bs_width:y
+                indx = x-bs_width+1:x
+                indy = y-bs_width+1:y
                 ∇xfield[y, x] = sum(field[y, indx] .* backward_stencil)
                 ∇yfield[y, x] = sum(field[indy, x] .* backward_stencil)
             end
@@ -162,84 +162,132 @@ function calc_grad(field::Array{T, 2}, dx::T, periodic::Bool;
     return ∇xfield ./ dx, ∇yfield ./ dx
 end
 
-function calc_lap(field::Array{T, 2}, dx::T, periodic::Bool) where T<:AbstractFloat
+function calc_lap(field::Array{T, 2}, dx::T, periodic::Bool;
+                  order::Int64=4) where T<:AbstractFloat
     ∇²field = similar(field)
     Ny, Nx = size(field)
 
+    # create stencils
+    if order == 4
+        central_stencil = [-1, 16, -30, 16, -1] / 12
+        forward_stencil = [45, -154, 214, -156, 61, -10] / 12
+    elseif order == 2
+        central_stencil = [1, 2, 1]
+        forward_stencil = [2, -5, 4, -1]
+    end
+    backward_stencil = reverse(forward_stencil)
+    cs_halfwidth = length(central_stencil) ÷ 2
+    fs_width = length(forward_stencil)
+    bs_width = fs_width
+
+
     # central differences in center region
     # Do order: up, right, center, down, left
-    for x in 2:Nx-1
-        for y in 2:Ny-1
-            ∇²field[y, x] = field[y+1, x] + field[y, x+1] - 4 * field[y, x] + field[y-1, x] + field[y, x-1]
+    for x in 1+cs_halfwidth:Nx-cs_halfwidth
+        for y in 1+cs_halfwidth:Ny-cs_halfwidth
+            indx = x-cs_halfwidth:x+cs_halfwidth
+            indy = y-cs_halfwidth:y+cs_halfwidth
+            ∇²field[y, x] = sum(field[y, indx] .* central_stencil) + sum(field[indy, x] .* central_stencil)
         end
     end
 
     if periodic # do central differences at edges
+        # vertical edges, include corners
+        for x in [1:cs_halfwidth Nx-cs_halfwidth+1:Nx]
+            for y in 1:Ny
+                indx = mod1.(x-cs_halfwidth:x+cs_halfwidth, Nx)
+                indy = mod1.(y-cs_halfwidth:y+cs_halfwidth, Ny)
+                ∇²field[y, x] = sum(field[y, indx] .* central_stencil) + sum(field[indy, x] .* central_stencil)
+            end
+        end
+        # horizontal edges, exclude corners
+        for y in [1:cs_halfwidth Ny-cs_halfwidth+1:Ny]
+            for x in 1+cs_halfwidth:Nx-cs_halfwidth
+                indx = mod1.(x-cs_halfwidth:x+cs_halfwidth, Nx)
+                indy = mod1.(y-cs_halfwidth:y+cs_halfwidth, Ny)
+                ∇²field[y, x] = sum(field[y, indx] .* central_stencil) + sum(field[indy, x] .* central_stencil)
+            end
+        end
+    else # do forward/backward differences at ends
+        ### edges ###
+        # left edge, forward difference on x, central on y
+        for x in 1:cs_halfwidth
+            for y in 1+cs_halfwidth:Ny-cs_halfwidth
+                indx = x:x+fs_width-1
+                indy = y-cs_halfwidth:y+cs_halfwidth
+                ∇²field[y, x] = sum(field[y, indx] .* forward_stencil) + sum(field[indy, x] .* central_stencil)
+            end
+        end
+        # right edge, backward difference on x, central on y
+        for x in Nx-cs_halfwidth+1:Nx
+            for y in 1+cs_halfwidth:Ny-cs_halfwidth
+                indx = x-bs_width+1:x
+                indy = y-cs_halfwidth:y+cs_halfwidth
+                ∇²field[y, x] = sum(field[y, indx] .* backward_stencil) + sum(field[indy, x] .* central_stencil)
+            end
+        end
+        # bottom edge, forward difference on y, central on x
+        for y in 1:cs_halfwidth
+            for x in 1+cs_halfwidth:Nx-cs_halfwidth
+                indx = x-cs_halfwidth:x+cs_halfwidth
+                indy = y:y+fs_width-1
+                ∇²field[y, x] = sum(field[y, indx] .* central_stencil) + sum(field[indy, x] .* forward_stencil)
+            end
+        end
+        # top edge, backward difference on y, central on x
+        for y in Ny-cs_halfwidth+1:Ny
+            for x in 1+cs_halfwidth:Nx-cs_halfwidth
+                indx = x-cs_halfwidth:x+cs_halfwidth
+                indy = y-bs_width+1:y
+                ∇²field[y, x] = sum(field[y, indx] .* central_stencil) + sum(field[indy, x] .* backward_stencil)
+            end
+        end
+
         ### corners ###
         # bottom left
-        ∇²field[1, 1] = field[2, 1] + field[1, 2] - 4 * field[1, 1] + field[Ny, 1] + field[1, Nx]
+        # forward difference for x and y
+        for x in 1:cs_halfwidth
+            for y in 1:cs_halfwidth
+                indx = x:x+fs_width-1
+                indy = y:y+fs_width-1
+                ∇²field[y, x] = sum(field[y, indx] .* forward_stencil) + sum(field[indy, x] .* forward_stencil)
+            end
+        end
 
         # bottom right
-        ∇²field[1, Nx] = field[2, Nx] + field[1, 1] - 4 * field[1, Nx] + field[Ny, Nx] + field[1, Nx-1]
+        # backward difference for x, forward difference for y
+        for x in Nx-cs_halfwidth+1:Nx
+            for y in 1:cs_halfwidth
+                indx = x-bs_width+1:x
+                indy = y:y+fs_width-1
+                ∇²field[y, x] = sum(field[y, indx] .* backward_stencil) + sum(field[indy, x] .* forward_stencil)
+            end
+        end
 
         # top left
-        ∇²field[Ny, 1] = field[1, 1] + field[Ny, 2] - 4 * field[Ny, 1] + field[Ny-1, 1] + field[Ny, Nx]
+        # forward difference for x, backward difference for y
+        for x in 1:cs_halfwidth
+            for y in Ny-cs_halfwidth+1:Ny
+                indx = x:x+fs_width-1
+                indy = y-bs_width+1:y
+                ∇²field[y, x] = sum(field[y, indx] .* forward_stencil) + sum(field[indy, x] .* backward_stencil)
+            end
+        end
 
         # top right
-        ∇²field[Ny, Nx] = field[1, Nx] + field[Ny, 1] - 4 * field[Ny, Nx] + field[Ny-1, Nx] + field[Ny, Nx-1]
-
-        ### edges ###
-        # vertical
-        for y in 2:Ny-1
-            # left
-            ∇²field[y, 1] = field[y+1, 1] + field[y, 2] - 4 * field[y, 1] + field[y-1, 1] + field[y, Nx]
-            # right
-            ∇²field[y, Nx] = field[y+1, Nx] + field[y, 1] - 4 * field[y, Nx] + field[y-1, Nx] + field[y, Nx-1]
+        # backward difference for x and y
+        for x in Nx-cs_halfwidth+1:Nx
+            for y in Ny-cs_halfwidth+1:Ny
+                indx = x-bs_width+1:x
+                indy = y-bs_width+1:y
+                ∇²field[y, x] = sum(field[y, indx] .* backward_stencil) + sum(field[indy, x] .* backward_stencil)
+            end
         end
 
-        # horizontal
-        for x in 2:Nx-1
-            # bottom
-            ∇²field[1, x] = field[2, x] + field[1, x+1] - 4 * field[1, x] + field[Ny, x] + field[1, x-1]
-            # top
-            ∇²field[Ny, x] = field[1, x] + field[Ny, x+1] - 4 * field[Ny, x] + field[Ny-1, x] + field[Ny, x-1]
-        end
-
-    else # do forward/backward differences at edges
-        ### corners ###
-        # bottom left
-        ∇²field[1, 1] = field[3, 1] - 2 * field[2, 1] + 2 * field[1, 1] - 2 * field[1, 2] + field[1, 3]
-
-        # bottom right
-        ∇²field[1, Nx] = field[1, Nx-2] - 2 * field[1, Nx-1] + 2 * field[1, Nx] - 2 * field[2, Nx] + field[3, Nx]
-
-        # top left
-        ∇²field[Ny, 1] = field[Ny-2, 1] - 2 * field[Ny-1, 1] + 2 * field[Ny, 1] - 2 * field[Ny, 2] + field[Ny, 3]
-
-        # top right
-        ∇²field[Ny, Nx] = field[Ny, Nx-2] - 2 * field[Ny, Nx-1] + 2 * field[Ny, Nx] - 2 * field[Ny-1, Nx] + field[Ny-2, Nx]
-
-        ### edges ###
-        # vertical
-        for y in 2:Ny-1
-            # left
-            ∇²field[y, 1] = field[y+1, 1] - field[y, 1] + field[y-1, 1] - 2 * field[y, 2] + field[y, 3]
-            # right
-            ∇²field[y, Nx] = field[y+1, Nx] - field[y, Nx] + field[y-1, Nx] - 2 * field[y, Nx-1] + field[y, Nx-2]
-        end
-
-        # horizontal
-        for x in 2:Nx-1
-            # bottom
-            ∇²field[1, x] = field[1, x-1] - field[1, x] + field[1, x+1] - 2 * field[2, x] + field[3, x]
-            # top
-            ∇²field[Ny, x] = field[Ny, x-1] - field[Ny, x] + field[Ny, x+1] - 2 * field[Ny-1, x] + field[Ny-2, x]
-        end
     end
 
     return ∇²field ./ dx^2
 end
-
 
 function calc_grad3(field::Array{T, 2}, dx::T, periodic::Bool;
                     enforce_bcs::Bool=true, bcval::T=0.0) where T<:AbstractFloat
@@ -249,7 +297,6 @@ function calc_grad3(field::Array{T, 2}, dx::T, periodic::Bool;
                                    bcval=bcval)
     return ∇³xfield, ∇³yfield
 end
-
 
 function calc_div(fieldx::Array{T, 2}, fieldy::Array{T, 2}, dx::T, periodic::Bool) where T<:AbstractFloat
     ∂x_fieldx, ∂y_fieldx = calc_grad(fieldx, dx, periodic)
