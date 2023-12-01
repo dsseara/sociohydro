@@ -11,93 +11,139 @@ using ProgressMeter
 export run_simulation, update!, load_data
 
 function calc_grad(field::Array{T, 2}, dx::T, periodic::Bool;
-                   enforce_bcs::Bool=true, bcval::T = 0.0) where T<:AbstractFloat
+                   enforce_bcs::Bool=true, bcval::T=0.0,
+                   order::Int64=4) where T<:AbstractFloat
     ∇xfield = similar(field)
     ∇yfield = similar(field)
     Ny, Nx = size(field)
 
+    # create stencils
+    if order==4
+        central_stencil = [1, -8, 0, 8, -1] / 12
+        forward_stencil = [-25, 48, -36, 16, -3] / 12
+    elseif order==2
+        central_stencil = [-1, 0, 1] / 2
+        forward_stencil = [-3, 2, -1] / 2
+    end
+
+    backward_stencil = -reverse(forward_stencil)
+
+    cs_halfwidth = length(central_stencil) ÷ 2
+    fs_width = length(forward_stencil)
+    bs_width = fs_width
+
     # central differences in center region
-    for x in 2:Nx-1
-        for y in 2:Ny-1
-            ∇xfield[y, x] = (field[y, x+1] - field[y, x-1]) / 2
-            ∇yfield[y, x] = (field[y+1, x] - field[y-1, x]) / 2
+    for x in 1+cs_halfwidth:Nx-cs_halfwidth
+        for y in 1+cs_halfwidth:Ny-cs_halfwidth
+            indx = x-cs_halfwidth:x+cs_halfwidth
+            indy = y-cs_halfwidth:y+cs_halfwidth
+            ∇xfield[y, x] = sum(field[y, indx] .* central_stencil)
+            ∇yfield[y, x] = sum(field[indy, x] .* central_stencil)
         end
     end
 
     if periodic # do central differences at edges
-        ### corners ###
-        # bottom left
-        ∇xfield[1, 1] = (field[1, 2] - field[1, Nx]) / 2
-        ∇yfield[1, 1] = (field[2, 1] - field[Ny, 1]) / 2
-
-        # bottom right
-        ∇xfield[1, Nx] = (field[1, 1] - field[1, Nx-1]) / 2
-        ∇yfield[1, Nx] = (field[2, Nx] - field[Ny, Nx]) / 2
-
-        # top left
-        ∇xfield[Ny, 1] = (field[Ny, 2] - field[Ny, Nx]) / 2
-        ∇yfield[Ny, 1] = (field[1, 1] - field[Ny-1, 1]) / 2
-
-        # top right
-        ∇xfield[Ny, Nx] = (field[Ny, 1] - field[Ny, Nx-1]) / 2
-        ∇yfield[Ny, Nx] = (field[1, Nx] - field[Ny-1, Nx]) / 2
-
-        ### edges ###
-        # vertical
-        for y in 2:Ny-1
-            # left
-            ∇xfield[y, 1] = (field[y, 2] - field[y, Nx]) / 2
-            ∇yfield[y, 1] = (field[y+1, 1] - field[y-1, 1]) / 2
-            # right
-            ∇xfield[y, Nx] = (field[y, 1] - field[y, Nx-1]) / 2
-            ∇yfield[y, Nx] = (field[y+1, Nx] - field[y-1, Nx]) / 2
+        # vertical edges, include corners
+        for x in [1:cs_halfwidth Nx-cs_halfwidth:Nx]
+            for y in 1:Ny
+                indx = mod1.(x-cs_halfwidth:x+cs_halfwidth, Nx)
+                indy = mod1.(y-cs_halfwidth:y+cs_halfwidth, Ny)
+                ∇xfield[y, x] = sum(field[y, indx] .* central_stencil)
+                ∇yfield[y, x] = sum(field[indy, x] .* central_stencil)
+            end
         end
-        # horizontal
-        for x in 2:Nx-1
-            # bottom
-            ∇xfield[1, x] = (field[1, x+1] - field[1, x-1]) / 2
-            ∇yfield[1, x] = (field[2, x] - field[Ny, x]) / 2
-            # top
-            ∇xfield[Ny, x] = (field[Ny, x+1] - field[Ny, x-1]) / 2
-            ∇yfield[Ny, x] = (field[1, x] - field[Ny-1, x]) / 2
+        # horizontal edges, exclude corners
+        for y in [1:cs_halfwidth Ny-cs_halfwidth:Ny]
+            for x in 1+cs_halfwidth:Nx-cs_halfwidth
+                indx = mod1.(x-cs_halfwidth:x+cs_halfwidth, Nx)
+                indy = mod1.(y-cs_halfwidth:y+cs_halfwidth, Ny)
+                ∇xfield[y, x] = sum(field[y, indx] .* central_stencil)
+                ∇yfield[y, x] = sum(field[indy, x] .* central_stencil)
+            end
         end
 
     else # do forward/backward differences at ends
+        ### edges ###
+        # left edge, forward difference on x, central on y
+        for x in 1:cs_halfwidth
+            for y in 1+cs_halfwidth:Ny-cs_halfwidth
+                indx = x:x+fs_width
+                indy = y-cs_halfwidth:y+cs_halfwidth
+                ∇xfield[y, x] = sum(field[y, indx] .* forward_stencil)
+                ∇yfield[y, x] = sum(field[indy, x] .* central_stencil)
+            end
+        end
+        # right edge, backward difference on x, central on y
+        for x in Nx-cs_halfwidth+1:Nx
+            for y in 1+cs_halfwidth:Ny-cs_halfwidth
+                indx = x-bs_width:x
+                indy = y-cs_halfwidth:y+cs_halfwidth
+                ∇xfield[y, x] = sum(field[y, indx] .* backward_stencil)
+                ∇yfield[y, x] = sum(field[indy, x] .* central_stencil)
+            end
+        end
+        # bottom edge, forward difference on y, central on x
+        for y in 1:cs_halfwidth
+            for x in 1+cs_halfwidth:Nx-cs_halfwidth
+                indx = x-cs_halfwidth:x+cs_halfwidth
+                indy = y:y+fs_width
+                ∇xfield[y, x] = sum(field[y, indx] .* central_stencil)
+                ∇yfield[y, x] = sum(field[indy, x] .* forward_stencil)
+            end
+        end
+        # top edge, backward difference on y, central on x
+        for y in Ny-cs_halfwidth+1:Ny
+            for x in 1+cs_halfwidth:Nx-cs_halfwidth
+                indx = x-cs_halfwidth:x+cs_halfwidth
+                indy = y-bs_width:y
+                ∇xfield[y, x] = sum(field[y, indx] .* central_stencil)
+                ∇yfield[y, x] = sum(field[indy, x] .* backward_stencil)
+            end
+        end
+
         ### corners ###
         # bottom left
-        ∇xfield[1, 1] = field[1, 2] - field[1, 1]
-        ∇yfield[1, 1] = field[2, 1] - field[1, 1]
+        # forward difference for x and y
+        for x in 1:cs_halfwidth
+            for y in 1:cs_halfwidth
+                indx = x:x+fs_width
+                indy = y:y+fs_width
+                ∇xfield[y, x] = sum(field[y, indx] .* forward_stencil)
+                ∇yfield[y, x] = sum(field[indy, x] .* forward_stencil)
+            end
+        end
 
         # bottom right
-        ∇xfield[1, Nx] = field[1, Nx] - field[1, Nx-1]
-        ∇yfield[1, Nx] = field[2, Nx] - field[1, Nx]
+        # backward difference for x, forward difference for y
+        for x in Nx-cs_halfwidth+1:Nx
+            for y in 1:cs_halfwidth
+                indx = x-bs_width:x
+                indy = y:y+fs_width
+                ∇xfield[y, x] = sum(field[y, indx] .* backward_stencil)
+                ∇yfield[y, x] = sum(field[indy, x] .* forward_stencil)
+            end
+        end
 
         # top left
-        ∇xfield[Ny, 1] = field[Ny, 2] - field[Ny, 1]
-        ∇yfield[Ny, 1] = field[Ny, 1] - field[Ny-1, 1]
+        # forward difference for x, backward difference for y
+        for x in 1:cs_halfwidth
+            for y in Ny-cs_halfwidth+1:Ny
+                indx = x:x+fs_width
+                indy = y-bs_width:y
+                ∇xfield[y, x] = sum(field[y, indx] .* forward_stencil)
+                ∇yfield[y, x] = sum(field[indy, x] .* backward_stencil)
+            end
+        end
 
         # top right
-        ∇xfield[Ny, Nx] = field[Ny, Nx] - field[Ny, Nx-1]
-        ∇yfield[Ny, Nx] = field[Ny, Nx] - field[Ny-1, Nx]
-
-        ### edges ###
-        # vertical
-        for y in 2:Ny-1
-            # left
-            ∇xfield[y, 1] = field[y, 2] - field[y, 1]
-            ∇yfield[y, 1] = (field[y+1, 1] - field[y-1, 1]) / 2
-            # right
-            ∇xfield[y, Nx] = field[y, Nx] - field[y, Nx - 1]
-            ∇yfield[y, Nx] = (field[y+1, Nx] - field[y-1, Nx]) / 2
-        end
-        #horizontal
-        for x in 2:Nx-1
-            # bottom
-            ∇xfield[1, x] = (field[1, x+1] - field[1, x-1]) / 2
-            ∇yfield[1, x] = field[2, x] - field[1, x]
-            # top
-            ∇xfield[Ny, x] = (field[Ny, x+1] - field[Ny, x-1]) / 2
-            ∇yfield[Ny, x] = field[Ny, x] - field[Ny-1, x]
+        # backward difference for x and y
+        for x in Nx-cs_halfwidth+1:Nx
+            for y in Ny-cs_halfwidth+1:Ny
+                indx = x-bs_width:x
+                indy = y-bs_width:y
+                ∇xfield[y, x] = sum(field[y, indx] .* backward_stencil)
+                ∇yfield[y, x] = sum(field[indy, x] .* backward_stencil)
+            end
         end
 
         # enforce boundary conditions
