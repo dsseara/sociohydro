@@ -8,38 +8,7 @@ using HDF5
 using JSON
 using ProgressMeter
 
-export run_simulation, update!
-
-# # 2nd order finite differences
-# grad(Nx::Int64, dx::Float64) = diagm(-(Nx - 1) => [+1/2],
-#                                   -1 => -(1/2) * ones(Nx - 1),
-#                                   +1 => +(1/2) * ones(Nx - 1),
-#                                   +(Nx - 1) => [-(1/2)]) ./ dx
-
-
-# lap(Nx::Int64, dx::Float64) = diagm(-(Nx - 1) => [1],
-#                                   -1 => 1 * ones(Nx - 1),
-#                                   0 => -2 * ones(Nx),
-#                                   +1 => 1 * ones(Nx - 1),
-#                                   +(Nx - 1) => [1]) ./ dx^2
-
-
-# gradlap(Nx::Int64, dx::Float64) = diagm(-(Nx - 1) => [-13/8],
-#                                         -(Nx - 2) => +1 * ones(2),
-#                                         -(Nx - 3) => -(1/8) * ones(3),
-#                                         -3 => +(1/8) * ones(Nx - 3),
-#                                         -2 => -1 * ones(Nx - 2),
-#                                         -1 => +(13/8) * ones(Nx - 1),
-#                                         +1 => -(13/8) * ones(Nx - 1),
-#                                         +2 => +1 * ones(Nx - 2),
-#                                         +3 => -(1/8) * ones(Nx - 3),
-#                                         +(Nx - 3) => +(1/8) * ones(3),
-#                                         +(Nx - 2) => -1 * ones(2),
-#                                         +(Nx - 1) => [+13 / 8]) ./ dx^3
-
-
-f(x::AbstractFloat) = x - 1
-df(x::AbstractFloat) = 1
+export run_simulation, update!, load_data
 
 function calc_grad(field::Array{T, 2}, dx::T, periodic::Bool;
                    enforce_bcs::Bool=true, bcval::T = 0.0) where T<:AbstractFloat
@@ -244,20 +213,20 @@ end
 
 
 function calc_J(ϕA::Array{T, 2}, ϕB::Array{T, 2}, dx::T, periodic::Bool,
-                utility_func::Function, params::Array{T, 1}, D::T, Γ::T) where T<:AbstractFloat
+                utility_params::Array{T, 1}, D::T, Γ::T) where T<:AbstractFloat
     # preallocation
     JAx = similar(ϕA)
     JAy = similar(ϕA)
     JBx = similar(ϕB)
     JBy = similar(ϕB)
 
-    πA, πB = utility_func(ϕA, ϕB, params)
-    ∇xπA, ∇yπA = calc_grad(uA, dx, periodic)
-    ∇xπB, ∇yπB = calc_grad(uB, dx, periodic)
+    πA, πB = utility_func(ϕA, ϕB, utility_params)
+    ∇xπA, ∇yπA = calc_grad(πA, dx, periodic)
+    ∇xπB, ∇yπB = calc_grad(πB, dx, periodic)
     ∇xϕA, ∇yϕA = calc_grad(ϕA, dx, periodic)
     ∇xϕB, ∇yϕB = calc_grad(ϕB, dx, periodic)
     ∇³xϕA, ∇³yϕA = calc_grad3(ϕA, dx, periodic)
-    ϕBxxx, ϕBxxy = calc_grad3(ϕB, dx, periodic)
+    ∇³xϕB, ∇³yϕB = calc_grad3(ϕB, dx, periodic)
 
     JAx = -D * ∇xϕA + ϕA * ∇xπA + Γ * ϕA * ∇³xϕA
     JAy = -D * ∇yϕA + ϕA * ∇yπA + Γ * ϕA * ∇³yϕA
@@ -269,10 +238,11 @@ end
 
 
 function calc_force(ϕA::Array{T, 2}, ϕB::Array{T, 2}, dx::T, periodic::Bool,
-                    utility_func::Function, params::Array{T, 1}, D::T, Γ::T) where T<:AbstractFloat
+                    utility_params::Array{T, 1},
+                    D::T, Γ::T) where T<:AbstractFloat
 
     JAx, JAy, JBx, JBy = calc_J(ϕA, ϕB, dx, periodic,
-                                utility_func, params,
+                                utility_params,
                                 D, Γ)
     FA = -calc_div(JAx, JAy, dx, periodic)
     FB = -calc_div(JBx, JBy, dx, periodic)
@@ -290,62 +260,238 @@ function rk4(field::Array{T, 2}, dt::T, force::Function) where T<:AbstractFloat
 end
 
 
+function update!(ϕA::Array{T, 2}, ϕB::Array{T, 2}, dx::T, dt::T,
+                 periodic::Bool, utility_params::Array{T, 1},
+                 D::T, Γ::T) where T<:AbstractFloat
 
-"""
-enforce_bcs(field::Array{T, 2})
+    # calculate forces
+    FA, FB = calc_force(ϕA, ϕB, dx, periodic,
+                        utility_params,
+                        D, Γ)
 
-We are enfocing the following at the boundaries:
-    ∇ϕ⋅n̂ = 0
-    ∇³ϕ⋅n̂ = 0
+    # update
+    ϕA += dt * FA
+    ϕB += dt * FB
 
-Let ϕ(j, i) denote the field at each grid point, with
-i = {1, Nx} and j = {1, Ny} denoting the edges.
-
-Given our central difference scheme, these BCs
-translate to (on the left edge)
-    ϕ(j, 1) = ϕ(j, 5)
-    ϕ(j, 2) = ϕ(j, 4)
-
-Other edges are done similarly.
-
-Corners need to be set appropriately to cancel
-out the 3rd order derivatives
-
-This function assumes that the field has
-been padded with 2 "ghost zones" on every edge
-"""
-function enforce_bcs!(field::Array{T, 2}; c::T = 0.1) where T<:AbstractFloat
-    Nx, Ny = size(field)
-
-    # go along x
-    for ii in 3:Nx-2
-        # bottom
-        field[1, ii] = field[5, ii]
-        field[2, ii] = field[4, ii]
-        # top
-        field[Ny, ii] = field[Ny-4, ii]
-        field[Ny-1, ii] = field[Ny-3, ii]
-    end
-    # go along y
-    for jj in 3:Ny-2
-        # left
-        field[jj, 1] = field[jj, 5]
-        field[jj, 2] = field[jj, 4]
-        # right
-        field[jj, Nx] = field[jj, Nx-4]
-        field[jj, Nx-1] = field[jj, Nx-3]
-    end
-
-    # corners
-    # bottom left
-    field[1, 1] = field[1, 2] = field[2, 1] = field[2, 2] = field[4, 4]
-    # bottom right
-    field[1, Nx] = field[1, Nx-1] = field[2, Nx] = field[2, Nx-1] = field[4, Nx-3]
-    # top left
-    field[Ny, 1] = field[Ny-1, 1] = field[Ny, 2] = field[Ny-1, 2] = field[Ny-3, 4]
-    # top right
-    field[Ny, Nx] = field[Ny-1, Nx] = field[Ny, Nx-1] = field[Ny-1, Nx-1] = field[Ny-3, Nx-3]
+    return ϕA, ϕB
 end
+
+
+function random_state(Nx::Int64,
+                      ϕA0::T, ϕB0::T,
+                      δϕA0::T, δϕB0::T) where T<:AbstractFloat
+    ϕA = ϕA0 .+ rand(Uniform(-1, 1), Nx, Nx) .* δϕA0
+    ϕB = ϕB0 .+ rand(Uniform(-1, 1), Nx, Nx) .* δϕB0
+
+    return ϕA, ϕB
+end
+
+
+# This version starts with a random initial condition
+function run_simulation(dx::T, Nx::Int64, dt::T, Nt::Int64,
+                        utility_params::Array{T, 1},
+                        snapshot::Int64, savepath::String;
+                        periodic::Bool=true,
+                        ϕA0::T = 0.25, ϕB0::T = 0.25,
+                        δϕA0::T = 0.05, δϕB0::T = 0.05,
+                        D::T = 0.1, Γ::T = 1.0) where T<:AbstractFloat
+
+    ϕA, ϕB = random_state(Nx, ϕA0, ϕB0, δϕA0, δϕB0)
+    t_init = 0.0
+
+    ϕA, ϕB, t = run_simulation(ϕA, ϕB, t_init,
+                               dx, Nx, dt, Nt,
+                               utility_params,
+                               snapshot, savepath,
+                               periodic=periodic,
+                               D=D, Γ=Γ)
+    return ϕA, ϕB, t
+end
+
+# this version starts with a given initial condition
+function run_simulation(ϕA::Array{T, 2}, ϕB::Array{T, 2}, t_init::T,
+                        dx::T, Nx::Int64, dt::T, Nt::Int64,
+                        utility_params::Array{T, 1},
+                        snapshot::Int64, savepath::String;
+                        periodic::Bool=true,
+                        D::T = 0.1, Γ::T = 1.0) where T<:AbstractFloat
+
+
+    if dt * dx^(-4) > 1/8
+        @warn "von Neumann stability criterion not satisfied"
+    end
+
+    # get spatial variable
+    L = Nx * dx
+    x = y = collect(-L/2 + dx/2:dx:(L/2) - dx/2)
+
+    # ensure we have a clean directory to dump data into
+    if isdir(savepath)
+        for file in readdir(savepath, join=true)
+            rm(file)
+        end
+    else
+        mkpath(savepath)
+    end
+
+    params = Dict("dx" => dx,
+                  "Nx" => Nx,
+                  "dt" => dt,
+                  "Nt" => Nt,
+                  "snapshot" => snapshot,
+                  "savepath" => savepath,
+                  "utility_params" => utility_params,
+                  "D" => D,
+                  "Γ" => Γ)
+
+    open(savepath * "/params.json", "w") do f
+        JSON.print(f, params, 4)
+    end
+
+    t::Float64 = t_init
+    # save initial condition
+    npad = Int(ceil(log10(Nt)) + 1)
+    save(ϕA, ϕB, x, y, t, 0, npad, savepath)
+
+    # main loop
+    println("Starting main loop...")
+    @showprogress for ii in 1:Nt
+        ϕA, ϕB = update!(ϕA, ϕB, dx, dt,
+                         periodic, utility_params,
+                         D, Γ)
+        t += dt
+
+        if ii % snapshot == 0
+            if nan_check(ϕA)
+                save(ϕA, ϕB, x, y, t, ii, npad, savepath)
+            else
+                throw(OverflowError("got nans"))
+            end
+        end
+    end
+    return ϕA, ϕB, t
+end
+
+function save(ϕA::Array{T, 2}, ϕB::Array{T, 2},
+              x::Array{T, 1}, y::Array{T, 1}, t::T,
+              step::Int64, npad::Int64, savepath::String) where T<:AbstractFloat
+
+    filename = "n" * lpad(string(step), npad, '0') * ".hdf5"
+
+    if Sys.isunix()
+        filesep = "/"
+    else
+        filesep = "\\"
+    end
+
+    filepath = savepath * filesep * filename
+
+    h5open(filepath, "w") do fid
+        d = create_group(fid, "data")
+        d["phiA"] = ϕA
+        d["phiB"] = ϕB
+        d["x"] = x
+        d["y"] = y
+        d["t"] = t
+    end
+end
+
+function nan_check(x::Array{T, 2}) where T<:AbstractFloat
+    return all(isfinite, x)
+end
+
+
+function utility_func(ϕA::Array{T, 2}, ϕB::Array{T, 2},
+                      params::Array{T, 1}) where T<:AbstractFloat
+    kaa, kab, kba, kbb = params
+    πA = @. kaa * ϕA + kab * ϕB
+    πB = @. kba * ϕA + kbb * ϕB
+
+    return πA, πB
+end
+
+
+function load_data(savepath)
+    # load data
+    files = readdir(savepath, join=true)
+    params = JSON.parsefile(files[end])
+    N_saved = length(files) - 1
+
+    ϕA_array = Array{Float64}(undef, params["Nx"], params["Nx"], N_saved)
+    ϕB_array = Array{Float64}(undef, params["Nx"], params["Nx"], N_saved)
+    x_array = Array{Float64}(undef, params["Nx"])
+    y_array = Array{Float64}(undef, params["Nx"])
+    t_array = Array{Float64}(undef, N_saved)
+    for (fidx, file) in enumerate(files[1:end-1])
+        h5open(file, "r") do d
+            ϕA_array[:, :, fidx] = read(d["data"], "phiA")
+            ϕB_array[:, :, fidx] = read(d["data"], "phiB")
+            t_array[fidx] = read(d["data"], "t")
+            if fidx == 1
+                x_array[:] = read(d["data"], "x")
+                y_array[:] = read(d["data"], "y")
+            end
+        end
+    end
+    return ϕA_array, ϕB_array, x_array, y_array, t_array, params
+end
+
+
+# """
+# enforce_bcs(field::Array{T, 2})
+
+# We are enfocing the following at the boundaries:
+#     ∇ϕ⋅n̂ = 0
+#     ∇³ϕ⋅n̂ = 0
+
+# Let ϕ(j, i) denote the field at each grid point, with
+# i = {1, Nx} and j = {1, Ny} denoting the edges.
+
+# Given our central difference scheme, these BCs
+# translate to (on the left edge)
+#     ϕ(j, 1) = ϕ(j, 5)
+#     ϕ(j, 2) = ϕ(j, 4)
+
+# Other edges are done similarly.
+
+# Corners need to be set appropriately to cancel
+# out the 3rd order derivatives
+
+# This function assumes that the field has
+# been padded with 2 "ghost zones" on every edge
+# """
+# function enforce_bcs!(field::Array{T, 2}; c::T = 0.1) where T<:AbstractFloat
+#     Nx, Ny = size(field)
+
+#     # go along x
+#     for ii in 3:Nx-2
+#         # bottom
+#         field[1, ii] = field[5, ii]
+#         field[2, ii] = field[4, ii]
+#         # top
+#         field[Ny, ii] = field[Ny-4, ii]
+#         field[Ny-1, ii] = field[Ny-3, ii]
+#     end
+#     # go along y
+#     for jj in 3:Ny-2
+#         # left
+#         field[jj, 1] = field[jj, 5]
+#         field[jj, 2] = field[jj, 4]
+#         # right
+#         field[jj, Nx] = field[jj, Nx-4]
+#         field[jj, Nx-1] = field[jj, Nx-3]
+#     end
+
+#     # corners
+#     # bottom left
+#     field[1, 1] = field[1, 2] = field[2, 1] = field[2, 2] = field[4, 4]
+#     # bottom right
+#     field[1, Nx] = field[1, Nx-1] = field[2, Nx] = field[2, Nx-1] = field[4, Nx-3]
+#     # top left
+#     field[Ny, 1] = field[Ny-1, 1] = field[Ny, 2] = field[Ny-1, 2] = field[Ny-3, 4]
+#     # top right
+#     field[Ny, Nx] = field[Ny-1, Nx] = field[Ny, Nx-1] = field[Ny-1, Nx-1] = field[Ny-3, Nx-3]
+# end
 
 
 
@@ -371,221 +517,5 @@ function fitness(ϕA::Array{T, 1}, ϕB::Array{T, 1},
     return πA, πB, dπA_dϕA, dπA_dϕB, dπB_dϕA, dπB_dϕB, U, dU_dϕA, dU_dϕB
 end
 
-
-function mobility(x, y)
-    return x * (1 - x - y)
-end
-
-
-function compute_force(ϕA::Array{T, 1}, ϕB::Array{T, 1},
-                       dx::T, Nx::Int64;
-                       α::T = 0.0, δ::T = 0.0, κ::T = 1.0,
-                       temp::T = 0.1, Γ::T = 0.5) where T<:AbstractFloat
-    
-    ### preallocation ###
-    mA = similar(ϕA)
-    mB = similar(ϕB)
-
-    T∇²ϕA = similar(ϕA)
-    T∇²ϕB = similar(ϕB)
-
-    TϕA∇²ϕB = similar(ϕA)
-    TϕB∇²ϕA = similar(ϕB)
-
-    Γ∇³ϕA = similar(ϕA)
-    Γ∇³ϕB = similar(ϕB)
-    ∇mAΓ∇³ϕA = similar(ϕA)
-    ∇mBΓ∇³ϕB = similar(ϕB)
-
-    ∇πA = similar(ϕA)
-    ∇πB = similar(ϕB)
-    ∇dU_dϕA = similar(ϕA)
-    ∇dU_dϕB = similar(ϕB)
-    ∇fitnessA = similar(ϕA)
-    ∇fitnessB = similar(ϕB)
-
-    FA = similar(ϕA)
-    FB = similar(ϕB)
-    #########
-    
-    # mobility
-    mA = mobility.(ϕA, ϕB)
-    mB = mobility.(ϕB, ϕA)
-
-    # diffusion
-    mul!(T∇²ϕA, ∇², ϕA, temp, 0)
-    mul!(T∇²ϕB, ∇², ϕB, temp, 0)
-    broadcast!(*, TϕA∇²ϕB, ϕA, T∇²ϕB)
-    broadcast!(*, TϕB∇²ϕA, ϕB, T∇²ϕA)
-
-    # bilaplacian
-    mul!(Γ∇³ϕA, ∇³, ϕA, Γ, 0)
-    mul!(Γ∇³ϕB, ∇³, ϕB, Γ, 0)
-    mul!(∇mAΓ∇³ϕA, ∇, mA .* Γ∇³ϕA)
-    mul!(∇mBΓ∇³ϕB, ∇, mB .* Γ∇³ϕB)
-
-    # fitness dynamics
-    πA, πB, dπA_dϕA, dπA_dϕB, dπB_dϕA, dπB_dϕB, U, dU_dϕA, dU_dϕB = fitness(ϕA, ϕB, δ, κ)
-    mul!(∇πA, ∇, πA)
-    mul!(∇πB, ∇, πB)
-    mul!(∇dU_dϕA, ∇, dU_dϕA)
-    mul!(∇dU_dϕB, ∇, dU_dϕB)
-    mul!(∇fitnessA, ∇, mA .* ((1 - α) .* ∇πA .+ α .* ∇dU_dϕA))
-    mul!(∇fitnessB, ∇, mB .* ((1 - α) .* ∇πB .+ α .* ∇dU_dϕB))
-
-    # forces
-    FA = @. T∇²ϕA - TϕB∇²ϕA + TϕA∇²ϕB - ∇fitnessA - ∇mAΓ∇³ϕA
-    FB = @. T∇²ϕB - TϕA∇²ϕB + TϕB∇²ϕA - ∇fitnessB - ∇mBΓ∇³ϕB
-
-    return FA, FB
-end
-
-
-function update!(ϕA::Array{T, 1}, ϕB::Array{T, 1},
-                 dx::T, Nx::Int64, dt::T;
-                 α::T = 0.0, δ::T = 0.0, κ::T = 1.0,
-                 temp::T = 0.1, Γ::T = 1.0) where T<:AbstractFloat
-    # get forces
-    FA, FB = compute_force(ϕA, ϕB, dx, Nx,
-                           α=α, δ=δ, κ=κ,
-                           temp=temp, Γ=Γ)
-    
-    # update
-    ϕA += dt * FA
-    ϕB += dt * FB
-
-    return ϕA, ϕB
-end
-
-
-function random_state(Nx::Int64,
-                      ϕA0::T, ϕB0::T,
-                      δϕA0::T, δϕB0::T) where T<:AbstractFloat
-    ϕA = ϕA0 .+ rand(Uniform(-1, 1), Nx) .* δϕA0
-    ϕB = ϕB0 .+ rand(Uniform(-1, 1), Nx) .* δϕB0
-
-    return ϕA, ϕB
-end
-
-
-# This version starts with a random initial condition
-function run_simulation(dx::T, Nx::Int64,
-                        dt::T, Nt::Int64,
-                        snapshot::Int64,
-                        savepath::String;
-                        ϕA0::T = 0.25, ϕB0::T = 0.25,
-                        δϕA0::T = 0.05, δϕB0::T = 0.05,
-                        α::T = 0.0, δ::T = 0.0, κ::T = 0.0,
-                        temp::T = 0.1, Γ::T =1.0) where T<:AbstractFloat
-
-    ϕA, ϕB = random_state(Nx, ϕA0, ϕB0, δϕA0, δϕB0)
-    t_init = 0.0
-
-    ϕA, ϕB, t = run_simulation(ϕA, ϕB,  t_init,
-                               dx, Nx, dt, Nt,
-                               snapshot,savepath,
-                               ϕA0=ϕA0, ϕB0=ϕB0, δϕA0=δϕA0, δϕB0=δϕB0,
-                               α=α, δ=δ, κ=κ, temp=temp, Γ=Γ)
-    return ϕA, ϕB, t
-end
-
-# this version starts with a given initial condition
-function run_simulation(ϕA::Array{T, 1}, ϕB::Array{T, 1}, t_init::T,
-                        dx::T, Nx::Int64, dt::T, Nt::Int64,
-                        snapshot::Int64, savepath::String;
-                        ϕA0::T = 0.25, ϕB0::T = 0.25,
-                        δϕA0::T = 0.05, δϕB0::T = 0.05,
-                        α::T = 0.0, δ::T = 0.0, κ::T = 0.0,
-                        temp::T = 0.1, Γ::T =1.0) where T<:AbstractFloat
-
-
-    if dt * dx^(-4) > 1/8
-        @warn "von Neumann stability criterion not satisfied"
-    end
-
-    # get spatial variable
-    L = Nx * dx
-    x = collect(-L/2 + dx/2:dx:(L/2) - dx/2)
-
-    # define gradient operators
-    global ∇ = grad(Nx, dx)
-    global ∇² = lap(Nx, dx)
-    global ∇³ = gradlap(Nx, dx)
-
-    # ensure we have a clean directory to dump data into
-    if isdir(savepath)
-        for file in readdir(savepath, join=true)
-            rm(file)
-        end
-    else
-        mkpath(savepath)
-    end
-
-    params = Dict("ϕA0" => ϕA0,
-                  "ϕB0" => ϕB0,
-                  "dx" => dx,
-                  "Nx" => Nx,
-                  "dt" => dt,
-                  "Nt" => Nt,
-                  "snapshot" => snapshot,
-                  "savepath" => savepath,
-                  "α" => α,
-                  "δ" => δ,
-                  "κ" => κ,
-                  "temp" => temp,
-                  "Γ" => Γ)
-
-    open(savepath * "/params.json", "w") do f
-        JSON.print(f, params, 4)
-    end
-
-    t::Float64 = t_init
-    # save initial condition
-    npad = Int(ceil(log10(Nt)) + 1)
-    save(ϕA, ϕB, x, t, 0, npad, savepath)
-
-    # main loop
-    println("Starting main loop...")
-    @showprogress for ii in 1:Nt
-        ϕA, ϕB = update!(ϕA, ϕB, dx, Nx, dt,
-                         α=α, δ=δ, κ=κ, temp=temp, Γ=Γ)
-        t += dt
-
-        if ii % snapshot == 0
-            if nan_check(ϕA)
-                save(ϕA, ϕB, x, t, ii, npad, savepath)
-            else
-                throw(OverflowError("got nans"))
-            end
-        end
-    end
-    return ϕA, ϕB, t
-end
-
-function save(ϕA::Array{T, 1}, ϕB::Array{T, 1}, x::Array{T, 1}, t::T,
-              step::Int64, npad::Int64, savepath::String) where T<:AbstractFloat
-
-    filename = "n" * lpad(string(step), npad, '0') * ".hdf5"
-
-    if Sys.isunix()
-        filesep = "/"
-    else
-        filesep = "\\"
-    end
-
-    filepath = savepath * filesep * filename
-
-    h5open(filepath, "w") do fid
-        d = create_group(fid, "data")
-        d["phiA"] = ϕA
-        d["phiB"] = ϕB
-        d["x"] = x
-        d["t"] = t
-    end
-end
-
-function nan_check(x::Array{T, 1}) where T<:AbstractFloat
-    return all(isfinite, x)
-end
 
 end
