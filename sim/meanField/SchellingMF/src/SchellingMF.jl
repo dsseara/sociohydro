@@ -306,7 +306,8 @@ end
 
 
 function calc_J(ϕA::Array{T, 2}, ϕB::Array{T, 2}, dx::T, periodic::Bool,
-                utility_params::Array{T, 1}, D::T, Γ::T) where T<:AbstractFloat
+                utility_params::Array{T, 1}, D::T, Γ::T;
+                order::Int64=4) where T<:AbstractFloat
     # preallocation
     JAx = similar(ϕA)
     JAy = similar(ϕA)
@@ -332,11 +333,11 @@ end
 
 function calc_force(ϕA::Array{T, 2}, ϕB::Array{T, 2}, dx::T, periodic::Bool,
                     utility_params::Array{T, 1},
-                    D::T, Γ::T) where T<:AbstractFloat
+                    D::T, Γ::T; order::Int64=4) where T<:AbstractFloat
 
     JAx, JAy, JBx, JBy = calc_J(ϕA, ϕB, dx, periodic,
                                 utility_params,
-                                D, Γ)
+                                D, Γ, order=order)
     FA = -calc_div(JAx, JAy, dx, periodic)
     FB = -calc_div(JBx, JBy, dx, periodic)
 
@@ -357,14 +358,29 @@ function update!(ϕA::Array{T, 2}, ϕB::Array{T, 2}, dx::T, dt::T,
                  periodic::Bool, utility_params::Array{T, 1},
                  D::T, Γ::T) where T<:AbstractFloat
 
-    # calculate forces
-    FA, FB = calc_force(ϕA, ϕB, dx, periodic,
-                        utility_params,
-                        D, Γ)
+    # rk4
+    FA1, FB1 = calc_force(ϕA, ϕB,
+                          dx, periodic, utility_params, D, Γ)
+    kA1 = dt * FA1
+    kB1 = dt * FB1
 
-    # update
-    ϕA += dt * FA
-    ϕB += dt * FB
+    FA2, FB2 = calc_force(ϕA + 0.5 * kA1, ϕB + 0.5 * kB1,
+                          dx, periodic, utility_params, D, Γ)
+    kA2 = dt * FA2
+    kB2 = dt * FB2
+
+    FA3, FB3 = calc_force(ϕA + 0.5 * kA2, ϕB + 0.5 * kB2,
+                          dx, periodic, utility_params, D, Γ)
+    kA3 = dt * FA3
+    kB3 = dt * FB3
+
+    FA4, FB4 = calc_force(ϕA + kA3, ϕB + kB3,
+                          dx, periodic, utility_params, D, Γ)
+    kA4 = dt * FA4
+    kB4 = dt * FB4
+
+    ϕA += (kA1 + 2 * kA2 + 2 * kA3 + kA4) / 6
+    ϕB += (kB1 + 2 * kB2 + 2 * kB3 + kB4) / 6
 
     return ϕA, ϕB
 end
