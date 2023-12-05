@@ -10,13 +10,8 @@ using ProgressMeter
 
 export run_simulation, update!, load_data
 
-function calc_grad(field::Array{T, 2}, dx::T, periodic::Bool;
-                   enforce_bcs::Bool=true, bcval::T=0.0,
-                   order::Int64=4) where T<:AbstractFloat
-    ∇xfield = similar(field)
-    ∇yfield = similar(field)
-    Ny, Nx = size(field)
 
+function calc_grad_stencil(order::Int64)
     # create stencils
     if order==4
         central_stencil = [1, -8, 0, 8, -1] / 12
@@ -27,6 +22,40 @@ function calc_grad(field::Array{T, 2}, dx::T, periodic::Bool;
     end
 
     backward_stencil = -reverse(forward_stencil)
+
+    return central_stencil, forward_stencil, backward_stencil
+end
+
+
+# periodic bc
+function calc_grad(field::Array{T, 2}, dx::T, central_stencil::Array{T, 1}) where T<:AbstractFloat
+    ∇xfield = similar(field)
+    ∇yfield = similar(field)
+    Ny, Nx = size(field)
+    cs_halfwidth = length(central_stencil) ÷ 2
+
+    # central differences
+    for x in 1:Nx
+        for y in 1:Ny
+            indx = mod1.(x-cs_halfwidth:x+cs_halfwidth, Nx)
+            indy = mod1.(y-cs_halfwidth:y+cs_halfwidth, Ny)
+            ∇xfield[y, x] = sum(field[y, indx] .* central_stencil)
+            ∇yfield[y, x] = sum(field[indy, x] .* central_stencil)
+        end
+    end
+
+    return ∇xfield ./ dx, ∇yfield ./ dx
+end
+
+
+# no-flux bc
+function calc_grad(field::Array{T, 2}, dx::T,
+                   central_stencil::Array{T, 1},
+                   forward_stencil::Array{T, 1},
+                   backward_stencil::Array{T, 1}) where T<:AbstractFloat
+    ∇xfield = similar(field)
+    ∇yfield = similar(field)
+    Ny, Nx = size(field)
 
     cs_halfwidth = length(central_stencil) ÷ 2
     fs_width = length(forward_stencil)
@@ -42,132 +71,105 @@ function calc_grad(field::Array{T, 2}, dx::T, periodic::Bool;
         end
     end
 
-    if periodic # do central differences at edges
-        # vertical edges, include corners
-        for x in [1:cs_halfwidth Nx-cs_halfwidth+1:Nx]
-            for y in 1:Ny
-                indx = mod1.(x-cs_halfwidth:x+cs_halfwidth, Nx)
-                indy = mod1.(y-cs_halfwidth:y+cs_halfwidth, Ny)
-                ∇xfield[y, x] = sum(field[y, indx] .* central_stencil)
-                ∇yfield[y, x] = sum(field[indy, x] .* central_stencil)
-            end
-        end
-        # horizontal edges, exclude corners
-        for y in [1:cs_halfwidth Ny-cs_halfwidth+1:Ny]
-            for x in 1+cs_halfwidth:Nx-cs_halfwidth
-                indx = mod1.(x-cs_halfwidth:x+cs_halfwidth, Nx)
-                indy = mod1.(y-cs_halfwidth:y+cs_halfwidth, Ny)
-                ∇xfield[y, x] = sum(field[y, indx] .* central_stencil)
-                ∇yfield[y, x] = sum(field[indy, x] .* central_stencil)
-            end
-        end
-
-    else # do forward/backward differences at ends
-        ### edges ###
-        # left edge, forward difference on x, central on y
-        for x in 1:cs_halfwidth
-            for y in 1+cs_halfwidth:Ny-cs_halfwidth
-                indx = x:x+fs_width-1
-                indy = y-cs_halfwidth:y+cs_halfwidth
-                ∇xfield[y, x] = sum(field[y, indx] .* forward_stencil)
-                ∇yfield[y, x] = sum(field[indy, x] .* central_stencil)
-            end
-        end
-        # right edge, backward difference on x, central on y
-        for x in Nx-cs_halfwidth+1:Nx
-            for y in 1+cs_halfwidth:Ny-cs_halfwidth
-                indx = x-bs_width+1:x
-                indy = y-cs_halfwidth:y+cs_halfwidth
-                ∇xfield[y, x] = sum(field[y, indx] .* backward_stencil)
-                ∇yfield[y, x] = sum(field[indy, x] .* central_stencil)
-            end
-        end
-        # bottom edge, forward difference on y, central on x
-        for y in 1:cs_halfwidth
-            for x in 1+cs_halfwidth:Nx-cs_halfwidth
-                indx = x-cs_halfwidth:x+cs_halfwidth
-                indy = y:y+fs_width-1
-                ∇xfield[y, x] = sum(field[y, indx] .* central_stencil)
-                ∇yfield[y, x] = sum(field[indy, x] .* forward_stencil)
-            end
-        end
-        # top edge, backward difference on y, central on x
-        for y in Ny-cs_halfwidth+1:Ny
-            for x in 1+cs_halfwidth:Nx-cs_halfwidth
-                indx = x-cs_halfwidth:x+cs_halfwidth
-                indy = y-bs_width+1:y
-                ∇xfield[y, x] = sum(field[y, indx] .* central_stencil)
-                ∇yfield[y, x] = sum(field[indy, x] .* backward_stencil)
-            end
-        end
-
-        ### corners ###
-        # bottom left
-        # forward difference for x and y
-        for x in 1:cs_halfwidth
-            for y in 1:cs_halfwidth
-                indx = x:x+fs_width-1
-                indy = y:y+fs_width-1
-                ∇xfield[y, x] = sum(field[y, indx] .* forward_stencil)
-                ∇yfield[y, x] = sum(field[indy, x] .* forward_stencil)
-            end
-        end
-
-        # bottom right
-        # backward difference for x, forward difference for y
-        for x in Nx-cs_halfwidth+1:Nx
-            for y in 1:cs_halfwidth
-                indx = x-bs_width+1:x
-                indy = y:y+fs_width-1
-                ∇xfield[y, x] = sum(field[y, indx] .* backward_stencil)
-                ∇yfield[y, x] = sum(field[indy, x] .* forward_stencil)
-            end
-        end
-
-        # top left
-        # forward difference for x, backward difference for y
-        for x in 1:cs_halfwidth
-            for y in Ny-cs_halfwidth+1:Ny
-                indx = x:x+fs_width-1
-                indy = y-bs_width+1:y
-                ∇xfield[y, x] = sum(field[y, indx] .* forward_stencil)
-                ∇yfield[y, x] = sum(field[indy, x] .* backward_stencil)
-            end
-        end
-
-        # top right
-        # backward difference for x and y
-        for x in Nx-cs_halfwidth+1:Nx
-            for y in Ny-cs_halfwidth+1:Ny
-                indx = x-bs_width+1:x
-                indy = y-bs_width+1:y
-                ∇xfield[y, x] = sum(field[y, indx] .* backward_stencil)
-                ∇yfield[y, x] = sum(field[indy, x] .* backward_stencil)
-            end
-        end
-
-        # enforce boundary conditions
-        if enforce_bcs
-            # left
-            ∇xfield[1:end, 1] .= bcval
-            # right
-            ∇xfield[1:end, end] .= bcval
-            # bottom
-            ∇yfield[1, 1:end] .= bcval
-            # top
-            ∇yfield[end, 1:end] .= bcval
+    # do forward/backward differences at ends
+    ### edges ###
+    # left edge, forward difference on x, central on y
+    for x in 1:cs_halfwidth
+        for y in 1+cs_halfwidth:Ny-cs_halfwidth
+            indx = x:x+fs_width-1
+            indy = y-cs_halfwidth:y+cs_halfwidth
+            ∇xfield[y, x] = sum(field[y, indx] .* forward_stencil)
+            ∇yfield[y, x] = sum(field[indy, x] .* central_stencil)
         end
     end
+    # right edge, backward difference on x, central on y
+    for x in Nx-cs_halfwidth+1:Nx
+        for y in 1+cs_halfwidth:Ny-cs_halfwidth
+            indx = x-bs_width+1:x
+            indy = y-cs_halfwidth:y+cs_halfwidth
+            ∇xfield[y, x] = sum(field[y, indx] .* backward_stencil)
+            ∇yfield[y, x] = sum(field[indy, x] .* central_stencil)
+        end
+    end
+    # bottom edge, forward difference on y, central on x
+    for y in 1:cs_halfwidth
+        for x in 1+cs_halfwidth:Nx-cs_halfwidth
+            indx = x-cs_halfwidth:x+cs_halfwidth
+            indy = y:y+fs_width-1
+            ∇xfield[y, x] = sum(field[y, indx] .* central_stencil)
+            ∇yfield[y, x] = sum(field[indy, x] .* forward_stencil)
+        end
+    end
+    # top edge, backward difference on y, central on x
+    for y in Ny-cs_halfwidth+1:Ny
+        for x in 1+cs_halfwidth:Nx-cs_halfwidth
+            indx = x-cs_halfwidth:x+cs_halfwidth
+            indy = y-bs_width+1:y
+            ∇xfield[y, x] = sum(field[y, indx] .* central_stencil)
+            ∇yfield[y, x] = sum(field[indy, x] .* backward_stencil)
+        end
+    end
+
+    ### corners ###
+    # bottom left
+    # forward difference for x and y
+    for x in 1:cs_halfwidth
+        for y in 1:cs_halfwidth
+            indx = x:x+fs_width-1
+            indy = y:y+fs_width-1
+            ∇xfield[y, x] = sum(field[y, indx] .* forward_stencil)
+            ∇yfield[y, x] = sum(field[indy, x] .* forward_stencil)
+        end
+    end
+
+    # bottom right
+    # backward difference for x, forward difference for y
+    for x in Nx-cs_halfwidth+1:Nx
+        for y in 1:cs_halfwidth
+            indx = x-bs_width+1:x
+            indy = y:y+fs_width-1
+            ∇xfield[y, x] = sum(field[y, indx] .* backward_stencil)
+            ∇yfield[y, x] = sum(field[indy, x] .* forward_stencil)
+        end
+    end
+
+    # top left
+    # forward difference for x, backward difference for y
+    for x in 1:cs_halfwidth
+        for y in Ny-cs_halfwidth+1:Ny
+            indx = x:x+fs_width-1
+            indy = y-bs_width+1:y
+            ∇xfield[y, x] = sum(field[y, indx] .* forward_stencil)
+            ∇yfield[y, x] = sum(field[indy, x] .* backward_stencil)
+        end
+    end
+
+    # top right
+    # backward difference for x and y
+    for x in Nx-cs_halfwidth+1:Nx
+        for y in Ny-cs_halfwidth+1:Ny
+            indx = x-bs_width+1:x
+            indy = y-bs_width+1:y
+            ∇xfield[y, x] = sum(field[y, indx] .* backward_stencil)
+            ∇yfield[y, x] = sum(field[indy, x] .* backward_stencil)
+        end
+    end
+
+    # enforce boundary conditions
+    # left
+    ∇xfield[1:end, 1] .= 0.0
+    # right
+    ∇xfield[1:end, end] .= 0.0
+    # bottom
+    ∇yfield[1, 1:end] .= 0.0
+    # top
+    ∇yfield[end, 1:end] .= 0.0
 
     return ∇xfield ./ dx, ∇yfield ./ dx
 end
 
-function calc_lap(field::Array{T, 2}, dx::T, periodic::Bool;
-                  order::Int64=4) where T<:AbstractFloat
-    ∇²field = similar(field)
-    Ny, Nx = size(field)
 
-    # create stencils
+function calc_lap_stencil(order::Int64)
     if order == 4
         central_stencil = [-1, 16, -30, 16, -1] / 12
         forward_stencil = [45, -154, 214, -156, 61, -10] / 12
@@ -176,138 +178,153 @@ function calc_lap(field::Array{T, 2}, dx::T, periodic::Bool;
         forward_stencil = [2, -5, 4, -1]
     end
     backward_stencil = reverse(forward_stencil)
-    cs_halfwidth = length(central_stencil) ÷ 2
-    fs_width = length(forward_stencil)
-    bs_width = fs_width
 
+    return central_stencil, forward_stencil, backward_stencil
+end
+
+
+# periodic bc
+function calc_lap(field::Array{T, 2}, dx::T, central_stencil::Array{T, 1}) where T<:AbstractFloat
+    ∇²field = similar(field)
+    Ny, Nx = size(field)
+    cs_halfwidth = length(central_stencil) ÷ 2
 
     # central differences in center region
     # Do order: up, right, center, down, left
-    for x in 1+cs_halfwidth:Nx-cs_halfwidth
-        for y in 1+cs_halfwidth:Ny-cs_halfwidth
-            indx = x-cs_halfwidth:x+cs_halfwidth
-            indy = y-cs_halfwidth:y+cs_halfwidth
+    for x in 1:Nx
+        for y in 1:Ny
+            indx = mod1.(x-cs_halfwidth:x+cs_halfwidth, Nx)
+            indy = mod1.(y-cs_halfwidth:y+cs_halfwidth, Ny)
             ∇²field[y, x] = sum(field[y, indx] .* central_stencil) + sum(field[indy, x] .* central_stencil)
         end
-    end
-
-    if periodic # do central differences at edges
-        # vertical edges, include corners
-        for x in [1:cs_halfwidth Nx-cs_halfwidth+1:Nx]
-            for y in 1:Ny
-                indx = mod1.(x-cs_halfwidth:x+cs_halfwidth, Nx)
-                indy = mod1.(y-cs_halfwidth:y+cs_halfwidth, Ny)
-                ∇²field[y, x] = sum(field[y, indx] .* central_stencil) + sum(field[indy, x] .* central_stencil)
-            end
-        end
-        # horizontal edges, exclude corners
-        for y in [1:cs_halfwidth Ny-cs_halfwidth+1:Ny]
-            for x in 1+cs_halfwidth:Nx-cs_halfwidth
-                indx = mod1.(x-cs_halfwidth:x+cs_halfwidth, Nx)
-                indy = mod1.(y-cs_halfwidth:y+cs_halfwidth, Ny)
-                ∇²field[y, x] = sum(field[y, indx] .* central_stencil) + sum(field[indy, x] .* central_stencil)
-            end
-        end
-    else # do forward/backward differences at ends
-        ### edges ###
-        # left edge, forward difference on x, central on y
-        for x in 1:cs_halfwidth
-            for y in 1+cs_halfwidth:Ny-cs_halfwidth
-                indx = x:x+fs_width-1
-                indy = y-cs_halfwidth:y+cs_halfwidth
-                ∇²field[y, x] = sum(field[y, indx] .* forward_stencil) + sum(field[indy, x] .* central_stencil)
-            end
-        end
-        # right edge, backward difference on x, central on y
-        for x in Nx-cs_halfwidth+1:Nx
-            for y in 1+cs_halfwidth:Ny-cs_halfwidth
-                indx = x-bs_width+1:x
-                indy = y-cs_halfwidth:y+cs_halfwidth
-                ∇²field[y, x] = sum(field[y, indx] .* backward_stencil) + sum(field[indy, x] .* central_stencil)
-            end
-        end
-        # bottom edge, forward difference on y, central on x
-        for y in 1:cs_halfwidth
-            for x in 1+cs_halfwidth:Nx-cs_halfwidth
-                indx = x-cs_halfwidth:x+cs_halfwidth
-                indy = y:y+fs_width-1
-                ∇²field[y, x] = sum(field[y, indx] .* central_stencil) + sum(field[indy, x] .* forward_stencil)
-            end
-        end
-        # top edge, backward difference on y, central on x
-        for y in Ny-cs_halfwidth+1:Ny
-            for x in 1+cs_halfwidth:Nx-cs_halfwidth
-                indx = x-cs_halfwidth:x+cs_halfwidth
-                indy = y-bs_width+1:y
-                ∇²field[y, x] = sum(field[y, indx] .* central_stencil) + sum(field[indy, x] .* backward_stencil)
-            end
-        end
-
-        ### corners ###
-        # bottom left
-        # forward difference for x and y
-        for x in 1:cs_halfwidth
-            for y in 1:cs_halfwidth
-                indx = x:x+fs_width-1
-                indy = y:y+fs_width-1
-                ∇²field[y, x] = sum(field[y, indx] .* forward_stencil) + sum(field[indy, x] .* forward_stencil)
-            end
-        end
-
-        # bottom right
-        # backward difference for x, forward difference for y
-        for x in Nx-cs_halfwidth+1:Nx
-            for y in 1:cs_halfwidth
-                indx = x-bs_width+1:x
-                indy = y:y+fs_width-1
-                ∇²field[y, x] = sum(field[y, indx] .* backward_stencil) + sum(field[indy, x] .* forward_stencil)
-            end
-        end
-
-        # top left
-        # forward difference for x, backward difference for y
-        for x in 1:cs_halfwidth
-            for y in Ny-cs_halfwidth+1:Ny
-                indx = x:x+fs_width-1
-                indy = y-bs_width+1:y
-                ∇²field[y, x] = sum(field[y, indx] .* forward_stencil) + sum(field[indy, x] .* backward_stencil)
-            end
-        end
-
-        # top right
-        # backward difference for x and y
-        for x in Nx-cs_halfwidth+1:Nx
-            for y in Ny-cs_halfwidth+1:Ny
-                indx = x-bs_width+1:x
-                indy = y-bs_width+1:y
-                ∇²field[y, x] = sum(field[y, indx] .* backward_stencil) + sum(field[indy, x] .* backward_stencil)
-            end
-        end
-
     end
 
     return ∇²field ./ dx^2
 end
 
-function calc_grad3(field::Array{T, 2}, dx::T, periodic::Bool;
-                    enforce_bcs::Bool=true, bcval::T=0.0) where T<:AbstractFloat
-    ∇²field = calc_lap(field, dx, periodic)
-    ∇³xfield, ∇³yfield = calc_grad(∇²field, dx, periodic;
-                                   enforce_bcs=enforce_bcs,
-                                   bcval=bcval)
+
+# no flux bc
+function calc_lap(field::Array{T, 2}, dx::T,
+                  central_stencil::Array{T, 1},
+                  forward_stencil::Array{T, 1},
+                  backward_stencil::Array{T, 1}) where T<:AbstractFloat
+    ∇²field = similar(field)
+    Ny, Nx = size(field)
+    cs_halfwidth = length(central_stencil) ÷ 2
+    fs_width = length(forward_stencil)
+    bs_width = fs_width
+
+    # central differences in center region
+    # Do order: up, right, center, down, left
+    for x in 1+cs_halfwidth:Nx-cs_halfwidth
+        for y in 1+cs_halfwidth:Ny-cs_halfwidth
+            indx = mod1.(x-cs_halfwidth:x+cs_halfwidth, Nx)
+            indy = mod1.(y-cs_halfwidth:y+cs_halfwidth, Ny)
+            ∇²field[y, x] = sum(field[y, indx] .* central_stencil) + sum(field[indy, x] .* central_stencil)
+        end
+    end
+
+    # do forward/backward differences at ends
+    ### edges ###
+    # left edge, forward difference on x, central on y
+    for x in 1:cs_halfwidth
+        for y in 1+cs_halfwidth:Ny-cs_halfwidth
+            indx = x:x+fs_width-1
+            indy = y-cs_halfwidth:y+cs_halfwidth
+            ∇²field[y, x] = sum(field[y, indx] .* forward_stencil) + sum(field[indy, x] .* central_stencil)
+        end
+    end
+    # right edge, backward difference on x, central on y
+    for x in Nx-cs_halfwidth+1:Nx
+        for y in 1+cs_halfwidth:Ny-cs_halfwidth
+            indx = x-bs_width+1:x
+            indy = y-cs_halfwidth:y+cs_halfwidth
+            ∇²field[y, x] = sum(field[y, indx] .* backward_stencil) + sum(field[indy, x] .* central_stencil)
+        end
+    end
+    # bottom edge, forward difference on y, central on x
+    for y in 1:cs_halfwidth
+        for x in 1+cs_halfwidth:Nx-cs_halfwidth
+            indx = x-cs_halfwidth:x+cs_halfwidth
+            indy = y:y+fs_width-1
+            ∇²field[y, x] = sum(field[y, indx] .* central_stencil) + sum(field[indy, x] .* forward_stencil)
+        end
+    end
+    # top edge, backward difference on y, central on x
+    for y in Ny-cs_halfwidth+1:Ny
+        for x in 1+cs_halfwidth:Nx-cs_halfwidth
+            indx = x-cs_halfwidth:x+cs_halfwidth
+            indy = y-bs_width+1:y
+            ∇²field[y, x] = sum(field[y, indx] .* central_stencil) + sum(field[indy, x] .* backward_stencil)
+        end
+    end
+
+    ### corners ###
+    # bottom left
+    # forward difference for x and y
+    for x in 1:cs_halfwidth
+        for y in 1:cs_halfwidth
+            indx = x:x+fs_width-1
+            indy = y:y+fs_width-1
+            ∇²field[y, x] = sum(field[y, indx] .* forward_stencil) + sum(field[indy, x] .* forward_stencil)
+        end
+    end
+
+    # bottom right
+    # backward difference for x, forward difference for y
+    for x in Nx-cs_halfwidth+1:Nx
+        for y in 1:cs_halfwidth
+            indx = x-bs_width+1:x
+            indy = y:y+fs_width-1
+            ∇²field[y, x] = sum(field[y, indx] .* backward_stencil) + sum(field[indy, x] .* forward_stencil)
+        end
+    end
+
+    # top left
+    # forward difference for x, backward difference for y
+    for x in 1:cs_halfwidth
+        for y in Ny-cs_halfwidth+1:Ny
+            indx = x:x+fs_width-1
+            indy = y-bs_width+1:y
+            ∇²field[y, x] = sum(field[y, indx] .* forward_stencil) + sum(field[indy, x] .* backward_stencil)
+        end
+    end
+
+    # top right
+    # backward difference for x and y
+    for x in Nx-cs_halfwidth+1:Nx
+        for y in Ny-cs_halfwidth+1:Ny
+            indx = x-bs_width+1:x
+            indy = y-bs_width+1:y
+            ∇²field[y, x] = sum(field[y, indx] .* backward_stencil) + sum(field[indy, x] .* backward_stencil)
+        end
+    end
+
+    return ∇²field ./ dx^2
+end
+
+
+function calc_grad3(field::Array{T, 2}, dx::T,
+                    ∇stencils::Tuple{Vararg{Array{T, 1}}},
+                    ∇²stencils::Tuple{Vararg{Array{T, 1}}}) where T<:AbstractFloat
+    ∇²field = calc_lap(field, dx, ∇²stencils...)
+    ∇³xfield, ∇³yfield = calc_grad(∇²field, dx, ∇stencils...)
     return ∇³xfield, ∇³yfield
 end
 
-function calc_div(fieldx::Array{T, 2}, fieldy::Array{T, 2}, dx::T, periodic::Bool) where T<:AbstractFloat
-    ∂x_fieldx, ∂y_fieldx = calc_grad(fieldx, dx, periodic)
-    ∂x_fieldy, ∂y_fieldy = calc_grad(fieldy, dx, periodic)
+
+function calc_div(fieldx::Array{T, 2}, fieldy::Array{T, 2}, dx::T,
+                  ∇stencils::Tuple{Vararg{Array{T, 1}}}) where T<:AbstractFloat
+    ∂x_fieldx, ∂y_fieldx = calc_grad(fieldx, dx, ∇stencils...)
+    ∂x_fieldy, ∂y_fieldy = calc_grad(fieldy, dx, ∇stencils...)
     return ∂x_fieldx + ∂y_fieldy
 end
 
 
-function calc_J(ϕA::Array{T, 2}, ϕB::Array{T, 2}, dx::T, periodic::Bool,
-                utility_params::Array{T, 1}, D::T, Γ::T;
-                order::Int64=4) where T<:AbstractFloat
+function calc_J(ϕA::Array{T, 2}, ϕB::Array{T, 2}, dx::T,
+                utility_params::Array{T, 1}, D::T, Γ::T,
+                ∇stencils::Tuple{Vararg{Array{T, 1}}},
+                ∇²stencils::Tuple{Vararg{Array{T, 1}}}) where T<:AbstractFloat
     # preallocation
     JAx = similar(ϕA)
     JAy = similar(ϕA)
@@ -315,12 +332,12 @@ function calc_J(ϕA::Array{T, 2}, ϕB::Array{T, 2}, dx::T, periodic::Bool,
     JBy = similar(ϕB)
 
     πA, πB = utility_func(ϕA, ϕB, utility_params)
-    ∇xπA, ∇yπA = calc_grad(πA, dx, periodic)
-    ∇xπB, ∇yπB = calc_grad(πB, dx, periodic)
-    ∇xϕA, ∇yϕA = calc_grad(ϕA, dx, periodic)
-    ∇xϕB, ∇yϕB = calc_grad(ϕB, dx, periodic)
-    ∇³xϕA, ∇³yϕA = calc_grad3(ϕA, dx, periodic)
-    ∇³xϕB, ∇³yϕB = calc_grad3(ϕB, dx, periodic)
+    ∇xπA, ∇yπA = calc_grad(πA, dx, ∇stencils...)
+    ∇xπB, ∇yπB = calc_grad(πB, dx, ∇stencils...)
+    ∇xϕA, ∇yϕA = calc_grad(ϕA, dx, ∇stencils...)
+    ∇xϕB, ∇yϕB = calc_grad(ϕB, dx, ∇stencils...)
+    ∇³xϕA, ∇³yϕA = calc_grad3(ϕA, dx, ∇stencils, ∇²stencils)
+    ∇³xϕB, ∇³yϕB = calc_grad3(ϕB, dx, ∇stencils, ∇²stencils)
 
     JAx = -D * ∇xϕA + ϕA * ∇xπA + Γ * ϕA * ∇³xϕA
     JAy = -D * ∇yϕA + ϕA * ∇yπA + Γ * ϕA * ∇³yϕA
@@ -331,15 +348,16 @@ function calc_J(ϕA::Array{T, 2}, ϕB::Array{T, 2}, dx::T, periodic::Bool,
 end
 
 
-function calc_force(ϕA::Array{T, 2}, ϕB::Array{T, 2}, dx::T, periodic::Bool,
-                    utility_params::Array{T, 1},
-                    D::T, Γ::T; order::Int64=4) where T<:AbstractFloat
+function calc_force(ϕA::Array{T, 2}, ϕB::Array{T, 2}, dx::T,
+                    utility_params::Array{T, 1}, D::T, Γ::T,
+                    ∇stencils::Tuple{Vararg{Array{T, 1}}},
+                    ∇²stencils::Tuple{Vararg{Array{T, 1}}}) where T<:AbstractFloat
 
-    JAx, JAy, JBx, JBy = calc_J(ϕA, ϕB, dx, periodic,
-                                utility_params,
-                                D, Γ, order=order)
-    FA = -calc_div(JAx, JAy, dx, periodic)
-    FB = -calc_div(JBx, JBy, dx, periodic)
+    JAx, JAy, JBx, JBy = calc_J(ϕA, ϕB, dx,
+                                utility_params, D, Γ,
+                                ∇stencils, ∇²stencils)
+    FA = -calc_div(JAx, JAy, dx, ∇stencils)
+    FB = -calc_div(JBx, JBy, dx, ∇stencils)
 
     return FA, FB
 end
@@ -355,32 +373,16 @@ end
 
 
 function update!(ϕA::Array{T, 2}, ϕB::Array{T, 2}, dx::T, dt::T,
-                 periodic::Bool, utility_params::Array{T, 1},
-                 D::T, Γ::T) where T<:AbstractFloat
+                 utility_params::Array{T, 1}, D::T, Γ::T,
+                 ∇stencils::Tuple{Vararg{Array{T, 1}}},
+                 ∇²stencils::Tuple{Vararg{Array{T, 1}}}) where T<:AbstractFloat
 
-    # rk4
-    FA1, FB1 = calc_force(ϕA, ϕB,
-                          dx, periodic, utility_params, D, Γ)
-    kA1 = dt * FA1
-    kB1 = dt * FB1
+    FA, FB = calc_force(ϕA, ϕB, dx,
+                        utility_params, D, Γ,
+                        ∇stencils, ∇²stencils)
 
-    FA2, FB2 = calc_force(ϕA + 0.5 * kA1, ϕB + 0.5 * kB1,
-                          dx, periodic, utility_params, D, Γ)
-    kA2 = dt * FA2
-    kB2 = dt * FB2
-
-    FA3, FB3 = calc_force(ϕA + 0.5 * kA2, ϕB + 0.5 * kB2,
-                          dx, periodic, utility_params, D, Γ)
-    kA3 = dt * FA3
-    kB3 = dt * FB3
-
-    FA4, FB4 = calc_force(ϕA + kA3, ϕB + kB3,
-                          dx, periodic, utility_params, D, Γ)
-    kA4 = dt * FA4
-    kB4 = dt * FB4
-
-    ϕA += (kA1 + 2 * kA2 + 2 * kA3 + kA4) / 6
-    ϕB += (kB1 + 2 * kB2 + 2 * kB3 + kB4) / 6
+    ϕA += dt * FA
+    ϕB += dt * FB
 
     return ϕA, ϕB
 end
@@ -422,7 +424,7 @@ function run_simulation(ϕA::Array{T, 2}, ϕB::Array{T, 2}, t_init::T,
                         dx::T, Nx::Int64, dt::T, Nt::Int64,
                         utility_params::Array{T, 1},
                         snapshot::Int64, savepath::String;
-                        periodic::Bool=true,
+                        periodic::Bool=true, order::Int64=4,
                         D::T = 0.1, Γ::T = 1.0) where T<:AbstractFloat
 
 
@@ -443,6 +445,7 @@ function run_simulation(ϕA::Array{T, 2}, ϕB::Array{T, 2}, t_init::T,
         mkpath(savepath)
     end
 
+    # save parameters
     params = Dict("dx" => dx,
                   "Nx" => Nx,
                   "dt" => dt,
@@ -451,10 +454,21 @@ function run_simulation(ϕA::Array{T, 2}, ϕB::Array{T, 2}, t_init::T,
                   "savepath" => savepath,
                   "utility_params" => utility_params,
                   "D" => D,
-                  "Γ" => Γ)
+                  "Γ" => Γ,
+                  "periodic" => periodic,
+                  "order" => order)
 
     open(savepath * "/params.json", "w") do f
         JSON.print(f, params, 4)
+    end
+
+    # get stencils
+    ∇stencils = calc_grad_stencil(order)
+    ∇²stencils = calc_lap_stencil(order)
+
+    if periodic
+        ∇stencils = (∇stencils[1],)
+        ∇²stencils = (∇²stencils[1],)
     end
 
     t::Float64 = t_init
@@ -466,8 +480,8 @@ function run_simulation(ϕA::Array{T, 2}, ϕB::Array{T, 2}, t_init::T,
     println("Starting main loop...")
     @showprogress for ii in 1:Nt
         ϕA, ϕB = update!(ϕA, ϕB, dx, dt,
-                         periodic, utility_params,
-                         D, Γ)
+                         utility_params, D, Γ,
+                         ∇stencils, ∇²stencils)
         t += dt
 
         if ii % snapshot == 0
