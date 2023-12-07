@@ -8,7 +8,7 @@ using HDF5
 using JSON
 using ProgressMeter
 
-export run_simulation, update!, load_data
+export run_simulation, update!, load_data, calc_grad_stencil, calc_grad, calc_lap_stencil, calc_lap, calc_grad3, calc_div, calc_J, calc_force!
 
 
 function calc_grad_stencil(order::Int64)
@@ -18,7 +18,7 @@ function calc_grad_stencil(order::Int64)
         forward_stencil = [-25, 48, -36, 16, -3] / 12
     elseif order==2
         central_stencil = [-1, 0, 1] / 2
-        forward_stencil = [-3, 2, -1] / 2
+        forward_stencil = [-1.0, 1.0]
     end
 
     backward_stencil = -reverse(forward_stencil)
@@ -155,28 +155,18 @@ function calc_grad(field::Array{T, 2}, dx::T,
         end
     end
 
-    # enforce boundary conditions
-    # left
-    ∇xfield[1:end, 1] .= 0.0
-    # right
-    ∇xfield[1:end, end] .= 0.0
-    # bottom
-    ∇yfield[1, 1:end] .= 0.0
-    # top
-    ∇yfield[end, 1:end] .= 0.0
-
     return ∇xfield ./ dx, ∇yfield ./ dx
 end
 
 
 function calc_lap_stencil(order::Int64)
-    if order == 4
-        central_stencil = [-1, 16, -30, 16, -1] / 12
-        forward_stencil = [45, -154, 214, -156, 61, -10] / 12
-    elseif order == 2
-        central_stencil = [1, 2, 1]
-        forward_stencil = [2, -5, 4, -1]
-    end
+    # if order == 4
+    #     central_stencil = [-1, 16, -30, 16, -1] / 12
+    #     forward_stencil = [45, -154, 214, -156, 61, -10] / 12
+    # elseif order == 2
+    central_stencil = [1.0, -2.0, 1.0]
+    forward_stencil = [-1.0, 1.0]
+    # end
     backward_stencil = reverse(forward_stencil)
 
     return central_stencil, forward_stencil, backward_stencil
@@ -348,18 +338,85 @@ function calc_J(ϕA::Array{T, 2}, ϕB::Array{T, 2}, dx::T,
 end
 
 
-function calc_force(ϕA::Array{T, 2}, ϕB::Array{T, 2}, dx::T,
-                    utility_params::Array{T, 1}, D::T, Γ::T,
-                    ∇stencils::Tuple{Vararg{Array{T, 1}}},
-                    ∇²stencils::Tuple{Vararg{Array{T, 1}}}) where T<:AbstractFloat
+"""
+rhs of equations of motion written as
+    \frac{dϕ}{dt} = f(ϕ, params, t)
 
-    JAx, JAy, JBx, JBy = calc_J(ϕA, ϕB, dx,
-                                utility_params, D, Γ,
-                                ∇stencils, ∇²stencils)
-    FA = -calc_div(JAx, JAy, dx, ∇stencils)
-    FB = -calc_div(JBx, JBy, dx, ∇stencils)
+ϕ = [N, N, 2] array with ϕA and ϕB
+params = (dx, utility_params, D, Γ, ∇stencils, ∇²stencils)
+t = time
+"""
+function calc_force!(dϕ::Array{T, 3},
+                     ϕ::Array{T, 3},
+                     params,
+                     # params::NamedTuple{(:dx, :utility_params, :D, :Γ, :∇stencils, :∇²stencils), Tuple{T, Array{T, 1}, T, T, Tuple{Vararg{Array{T, 1}}}, Tuple{Vararg{Array{T, 1}}}}},
+                     t::T) where T<:AbstractFloat
 
-    return FA, FB
+    # JAx, JAy, JBx, JBy = calc_J(ϕ[:, :, 1], ϕ[:, :, 2],
+    #                             params.dx, params.utility_params,
+    #                             params.D, params.Γ,
+    #                             params.∇stencils,
+    #                             params.∇²stencils)
+
+    F = similar(ϕ)
+
+    # πA = similar(ϕ[:, :, 1])
+    # ∇xπA = similar(ϕ[:, :, 1])
+    # ∇yπA = similar(ϕ[:, :, 1])
+    # ∇²πA = similar(ϕ[:, :, 1])
+
+    # πB = similar(ϕ[:, :, 2])
+    # ∇xπB = similar(ϕ[:, :, 2])
+    # ∇yπB = similar(ϕ[:, :, 2])
+    # ∇²πB = similar(ϕ[:, :, 2])
+
+    # ∇xϕA = similar(ϕ[:, :, 1])
+    # ∇yϕA = similar(ϕ[:, :, 1])
+    # ∇²ϕA = similar(ϕ[:, :, 1])
+    # ∇³xϕA = similar(ϕ[:, :, 1])
+    # ∇³yϕA = similar(ϕ[:, :, 1])
+    # ∇⁴ϕA = similar(ϕ[:, :, 1])
+
+    # ∇xϕB = similar(ϕ[:, :, 2])
+    # ∇yϕB = similar(ϕ[:, :, 2])
+    # ∇²ϕB = similar(ϕ[:, :, 2])
+    # ∇³xϕB = similar(ϕ[:, :, 2])
+    # ∇³yϕB = similar(ϕ[:, :, 2])
+    # ∇⁴ϕB = similar(ϕ[:, :, 2])
+
+    # ∇_ϕA∇πA = similar(ϕ[:, :, 1])
+    # ∇_ϕA∇³ϕA = similar(ϕ[:, :, 1])
+
+    # ∇_ϕB∇πB = similar(ϕ[:, :, 2])
+    # ∇_ϕB∇³ϕB = similar(ϕ[:, :, 2])
+
+    πA, πB = utility_func(ϕ[:, :, 1], ϕ[:, :, 2], params.utility_params)
+    ∇xπA, ∇yπA = calc_grad(πA, params.dx, params.∇stencils...)
+    ∇²πA = calc_lap(πA, params.dx, params.∇²stencils...)
+    ∇xπB, ∇yπB = calc_grad(πB, params.dx, params.∇stencils...)
+    ∇²πB = calc_lap(πB, params.dx, params.∇²stencils...)
+
+    ∇xϕA, ∇yϕA = calc_grad(ϕ[:, :, 1], params.dx, params.∇stencils...)
+    ∇²ϕA = calc_lap(ϕ[:, :, 1], params.dx, params.∇²stencils...)
+    ∇³xϕA, ∇³yϕA = calc_grad(∇²ϕA, params.dx, params.∇stencils...)
+    ∇⁴ϕA = calc_lap(∇²ϕA, params.dx, params.∇²stencils...)
+
+    ∇xϕB, ∇yϕB = calc_grad(ϕ[:, :, 2], params.dx, params.∇stencils...)
+    ∇²ϕB = calc_lap(ϕ[:, :, 2], params.dx, params.∇²stencils...)
+    ∇³xϕB, ∇³yϕB = calc_grad(∇²ϕB, params.dx, params.∇stencils...)
+    ∇⁴ϕB = calc_lap(∇²ϕB, params.dx, params.∇²stencils...)
+
+    ∇_ϕA∇πA = @. ∇xϕA * ∇xπA + ∇yϕA * ∇yπA + ϕ[:, :, 1] * ∇²πA
+    ∇_ϕB∇πB = @. ∇xϕB * ∇xπB + ∇yϕB * ∇yπB + ϕ[:, :, 2] * ∇²πB
+
+    ∇_ϕA∇³ϕA = @. ∇xϕA * ∇³xϕA + ∇yϕA * ∇³yϕA + ϕ[:, :, 1] * ∇⁴ϕA
+    ∇_ϕB∇³ϕB = @. ∇xϕB * ∇³xϕB + ∇yϕB * ∇³yϕB + ϕ[:, :, 2] * ∇⁴ϕB
+
+    F[:, :, 1] .= params.D * ∇²ϕA - ∇_ϕA∇πA - params.Γ * ∇_ϕA∇³ϕA
+    F[:, :, 2] .= params.D * ∇²ϕB - ∇_ϕB∇πB - params.Γ * ∇_ϕB∇³ϕB
+
+    dϕ .= F
+    return dϕ
 end
 
 
