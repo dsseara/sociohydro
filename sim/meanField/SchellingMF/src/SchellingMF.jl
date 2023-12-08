@@ -18,7 +18,7 @@ function calc_grad_stencil(order::Int64)
         forward_stencil = [-25, 48, -36, 16, -3] / 12
     elseif order==2
         central_stencil = [-1, 0, 1] / 2
-        forward_stencil = [-1.0, 1.0]
+        forward_stencil = [-1, 1] / 2  # no flux
     end
 
     backward_stencil = -reverse(forward_stencil)
@@ -160,13 +160,13 @@ end
 
 
 function calc_lap_stencil(order::Int64)
-    # if order == 4
-    #     central_stencil = [-1, 16, -30, 16, -1] / 12
-    #     forward_stencil = [45, -154, 214, -156, 61, -10] / 12
-    # elseif order == 2
-    central_stencil = [1.0, -2.0, 1.0]
-    forward_stencil = [-1.0, 1.0]
-    # end
+    if order == 4
+        central_stencil = [-1, 16, -30, 16, -1] / 12
+        forward_stencil = [45, -154, 214, -156, 61, -10] / 12
+    elseif order == 2
+        central_stencil = [1.0, -2.0, 1.0]
+        forward_stencil = [-1.0, 1.0]
+    end
     backward_stencil = reverse(forward_stencil)
 
     return central_stencil, forward_stencil, backward_stencil
