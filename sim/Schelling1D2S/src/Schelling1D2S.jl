@@ -394,9 +394,9 @@ end
 
 
 """
-    quadratic_utility(x, params)
+    utility(x, params)
 
-Calculate the quadratic utility function for an array
+Calculate the linear utility function for an array
 
 ## Inputs
 - x : 2-element array
@@ -412,8 +412,7 @@ Calculate the quadratic utility function for an array
 """
 function utility(n::Vector{Int64},
                  capacity::Int64,
-                 delta::T,
-                 kappa::T) where T<:AbstractFloat
+                 κ₊::T, κ₋::T) where T<:AbstractFloat
     πs = Vector{Float64}(undef, 2)
     
     nA, nB = n
@@ -422,12 +421,12 @@ function utility(n::Vector{Int64},
     
     # don't count self as a neighbor
     # uA = 4 * (ϕA - capacity^(-1)) * (1 - (ϕA - capacity^(-1)))
-    uA = (ϕA - capacity^(-1)) - 1
+    uA = (ϕA - capacity^(-1))
     # uB = 4 * (ϕB - capacity^(-1)) * (1 - (ϕB - capacity^(-1)))
-    uB = (ϕB - capacity^(-1)) - 1
+    uB = (ϕB - capacity^(-1))
     
-    πs = [uA + (kappa - delta) * ϕB / 2,
-               uB + (kappa + delta) * ϕA / 2]
+    πs = [uA + (κ₊ - κ₋) * ϕB / 2,
+          uB + (κ₊ + κ₋) * ϕA / 2]
 
     return πs
 end
