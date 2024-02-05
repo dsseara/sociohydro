@@ -327,12 +327,14 @@ function glauber_prob(ΔGs::Array{T, 1},
 
     # get probability of each move
     ps = Array{Float64}(undef, length(ΔGs))
+    @. ps = 2 * temp * dt / (1 + exp(-ΔGs / temp))
 
-    for (gidx, ΔG) in enumerate(ΔGs)
-        ps[gidx] = ifelse(temp == 0,
-                          (sign(ΔG) + 1) * 0.5,
-                          2 * temp * dt / (1 + exp(-ΔG / temp)))
-    end
+    # for (gidx, ΔG) in enumerate(ΔGs)
+    #     # ps[gidx] = ifelse(temp == 0,
+    #     #                   (sign(ΔG) + 1) * 0.5,
+    #     #                   2 * temp * dt / (1 + exp(-ΔG / temp)))
+    #     ps[gidx] = 2 * temp * dt / (1 + exp(-ΔG / temp))
+    # end
 
     # add probability of not moving
     # ps[end] = 1 - sum(ps[1:end-1])
