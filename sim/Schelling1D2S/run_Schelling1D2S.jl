@@ -55,6 +55,10 @@ function parse_commandline()
             help = "where to save output"
             arg_type = String
             default = "."
+        "--filename"
+            help = "name of savefile"
+            arg_type = String
+            default = "data.hdf5"
     end
 
     return parse_args(s)
@@ -62,7 +66,6 @@ end
 
 
 function main()
-    println("here")
     parsed_args = parse_commandline()
     println(parsed_args)
     state = random_state(parsed_args)

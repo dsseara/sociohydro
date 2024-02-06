@@ -67,6 +67,12 @@ Based on Grauwin et al, PNAS 2009
     - params["fill"] : 2-element array
         - what fraction of available sites are filled with agents of each type.
           Must sum to less than 1
+    - params["snapshot"] : int
+        - how many sweeps between saved outputs
+    - params["savepath"] : string
+        - path to folder where to save output
+    - params["filename"]
+        - name of file to save data into
 
 ## Outputs
 - state : array
@@ -88,6 +94,7 @@ function run_simulation!(state::Matrix{Int64},
     # storage params
     snapshot = params["snapshot"]
     savepath = params["savepath"]
+    filename = params["filename"]
 
     # create savepath
     if isdir(savepath)
@@ -127,7 +134,7 @@ function run_simulation!(state::Matrix{Int64},
     
     # save final state.
     # At worst, overwrites itself
-    save(state, params, sweep=n_sweeps)
+    # save(state, params, sweep=n_sweeps)
 
     return state
 end
@@ -440,9 +447,11 @@ function save(state::Matrix{T},
               sweep::T = -1) where T<:Integer
     savepath = params["savepath"]
     n_sweeps = params["n_sweeps"]
+    filename = params["filename"]
+
     npad = Int(ceil(log10(n_sweeps)) + 1)
 
-    filename = "n" * lpad(string(sweep), npad, '0') * ".hdf5"
+    groupname = "n" * lpad(string(sweep), npad, '0')
     
     if Sys.isunix()
         filesep = "/"
@@ -452,8 +461,8 @@ function save(state::Matrix{T},
         
     filepath = savepath * filesep * filename
     
-    h5open(filepath, "w") do fid
-        d = create_group(fid, "data")
+    h5open(filepath, "cw") do fid
+        d = create_group(fid, groupname)
         d["state"] = state
         d["sweep"] = sweep
     end
