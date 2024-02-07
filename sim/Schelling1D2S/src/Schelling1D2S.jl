@@ -106,7 +106,8 @@ function run_simulation!(state::Matrix{Int64},
     end
 
     # save params and initial state
-    open(savepath * "/params.json", "w") do f
+    param_filename = filename * "_params.json"
+    open(savepath * "/" * param_filename, "w") do f
         JSON.print(f, params, 4)
     end
     save(state, params, sweep=0)
@@ -419,7 +420,7 @@ Calculate the linear utility function for an array
 """
 function utility(n::Vector{Int64},
                  capacity::Int64,
-                 κ₊::T, κ₋::T) where T<:AbstractFloat
+                 delta::T, kappa::T) where T<:AbstractFloat
     πs = Vector{Float64}(undef, 2)
     
     nA, nB = n
@@ -432,8 +433,8 @@ function utility(n::Vector{Int64},
     # uB = 4 * (ϕB - capacity^(-1)) * (1 - (ϕB - capacity^(-1)))
     uB = (ϕB - capacity^(-1))
     
-    πs = [uA + (κ₊ - κ₋) * ϕB / 2,
-          uB + (κ₊ + κ₋) * ϕA / 2]
+    πs = [uA + (kappa - delta) * ϕB / 2,
+          uB + (kappa + delta) * ϕA / 2]
 
     return πs
 end
