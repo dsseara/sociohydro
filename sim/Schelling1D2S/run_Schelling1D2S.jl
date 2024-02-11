@@ -58,7 +58,7 @@ function parse_commandline()
         "--filename"
             help = "name of savefile"
             arg_type = String
-            default = "data.hdf5"
+            default = "data"
     end
 
     return parse_args(s)
