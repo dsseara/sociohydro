@@ -448,7 +448,7 @@ function save(state::Matrix{T},
               sweep::T = -1) where T<:Integer
     savepath = params["savepath"]
     n_sweeps = params["n_sweeps"]
-    filename = params["filename"]
+    filename = params["filename"] * ".hdf5"
 
     npad = Int(ceil(log10(n_sweeps)) + 1)
 
