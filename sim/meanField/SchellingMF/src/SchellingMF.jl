@@ -53,14 +53,14 @@ df(x::AbstractFloat) = 1
 function fitness(ϕA::Array{T, 1}, ϕB::Array{T, 1},
                  δ::T, κ::T) where T<:AbstractFloat
     # fitness
-    πA = @. f(ϕA) + (κ - δ) * ϕB / 2
-    πB = @. f(ϕB) + (κ + δ) * ϕA / 2
+    πA = @. ϕA + (κ - δ) * ϕB / 2
+    πB = @. ϕB * (1 - ϕB) + (κ + δ) * ϕA / 2
 
     # fitness derivatives
-    dπA_dϕA = @. df(ϕA)
+    dπA_dϕA = @. 1
     dπA_dϕB = @. (κ - δ) / 2
     dπB_dϕA = @. (κ + δ) / 2
-    dπB_dϕB = @. df(ϕB)
+    dπB_dϕB = @. 1 - 2 * ϕB
 
     # global fitness
     U = @. ϕA * πA + ϕB * πB
