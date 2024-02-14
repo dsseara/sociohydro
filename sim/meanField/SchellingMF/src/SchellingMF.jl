@@ -173,7 +173,8 @@ end
 function run_simulation(dx::T, Nx::Int64,
                         dt::T, Nt::Int64,
                         snapshot::Int64,
-                        savepath::String;
+                        savepath::String,
+                        filename::String;
                         ϕA0::T = 0.25, ϕB0::T = 0.25,
                         δϕA0::T = 0.05, δϕB0::T = 0.05,
                         α::T = 0.0, δ::T = 0.0, κ::T = 0.0,
@@ -184,7 +185,7 @@ function run_simulation(dx::T, Nx::Int64,
 
     ϕA, ϕB, t = run_simulation(ϕA, ϕB,  t_init,
                                dx, Nx, dt, Nt,
-                               snapshot,savepath,
+                               snapshot,savepath, filename,
                                ϕA0=ϕA0, ϕB0=ϕB0, δϕA0=δϕA0, δϕB0=δϕB0,
                                α=α, δ=δ, κ=κ, temp=temp, Γ=Γ)
     return ϕA, ϕB, t
@@ -193,7 +194,8 @@ end
 # this version starts with a given initial condition
 function run_simulation(ϕA::Array{T, 1}, ϕB::Array{T, 1}, t_init::T,
                         dx::T, Nx::Int64, dt::T, Nt::Int64,
-                        snapshot::Int64, savepath::String;
+                        snapshot::Int64, savepath::String,
+                        filename::String;
                         ϕA0::T = 0.25, ϕB0::T = 0.25,
                         δϕA0::T = 0.05, δϕB0::T = 0.05,
                         α::T = 0.0, δ::T = 0.0, κ::T = 0.0,
@@ -230,20 +232,22 @@ function run_simulation(ϕA::Array{T, 1}, ϕB::Array{T, 1}, t_init::T,
                   "Nt" => Nt,
                   "snapshot" => snapshot,
                   "savepath" => savepath,
+                  "filename" => filename,
                   "α" => α,
                   "δ" => δ,
                   "κ" => κ,
                   "temp" => temp,
                   "Γ" => Γ)
 
-    open(savepath * "/params.json", "w") do f
+    param_filename = filename * "_params.json"
+    open(savepath * "/" * param_filename, "w") do f
         JSON.print(f, params, 4)
     end
 
     t::Float64 = t_init
     # save initial condition
     npad = Int(ceil(log10(Nt)) + 1)
-    save(ϕA, ϕB, x, t, 0, npad, savepath)
+    save(ϕA, ϕB, x, t, 0, npad, savepath, filename)
 
     # main loop
     println("Starting main loop...")
@@ -254,7 +258,7 @@ function run_simulation(ϕA::Array{T, 1}, ϕB::Array{T, 1}, t_init::T,
 
         if ii % snapshot == 0
             if nan_check(ϕA)
-                save(ϕA, ϕB, x, t, ii, npad, savepath)
+                save(ϕA, ϕB, x, t, ii, npad, savepath, filename)
             else
                 throw(OverflowError("got nans"))
             end
@@ -264,9 +268,10 @@ function run_simulation(ϕA::Array{T, 1}, ϕB::Array{T, 1}, t_init::T,
 end
 
 function save(ϕA::Array{T, 1}, ϕB::Array{T, 1}, x::Array{T, 1}, t::T,
-              step::Int64, npad::Int64, savepath::String) where T<:AbstractFloat
+              step::Int64, npad::Int64, savepath::String,
+              filename::String) where T<:AbstractFloat
 
-    filename = "n" * lpad(string(step), npad, '0') * ".hdf5"
+    groupname = "n" * lpad(string(step), npad, '0')
 
     if Sys.isunix()
         filesep = "/"
@@ -274,10 +279,10 @@ function save(ϕA::Array{T, 1}, ϕB::Array{T, 1}, x::Array{T, 1}, t::T,
         filesep = "\\"
     end
 
-    filepath = savepath * filesep * filename
+    filepath = savepath * filesep * filename * ".hdf5"
 
-    h5open(filepath, "w") do fid
-        d = create_group(fid, "data")
+    h5open(filepath, "cw") do fid
+        d = create_group(fid, groupname)
         d["phiA"] = ϕA
         d["phiB"] = ϕB
         d["x"] = x
