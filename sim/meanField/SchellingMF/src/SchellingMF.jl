@@ -8,7 +8,7 @@ using HDF5
 using JSON
 using ProgressMeter
 
-export run_simulation, update!
+export run_simulation, update!, load_data
 
 # fourth order finite differences
 grad(Nx::Int64, dx::Float64) = diagm(-(Nx - 1) => [+2/3],
@@ -288,6 +288,33 @@ function save(ϕA::Array{T, 1}, ϕB::Array{T, 1}, x::Array{T, 1}, t::T,
         d["x"] = x
         d["t"] = t
     end
+end
+
+searchdir(path, key) = filter(x->contains(x, key), readdir(path, join=true))
+
+function load_data(savepath::String)
+    datafile = searchdir(savepath, "hdf5")[1]
+    paramfile = searchdir(savepath, "json")[1]
+    params = JSON.parsefile(paramfile)
+    N_saved = Int(params["Nt"] / params["snapshot"]) + 1
+
+    ϕA_array = Array{Float64}(undef, params["Nx"], N_saved)
+    ϕB_array = Array{Float64}(undef, params["Nx"], N_saved)
+    x_array = Array{Float64}(undef, params["Nx"])
+    t_array = Array{Float64}(undef, N_saved)
+
+    h5open(datafile, "r") do d
+        for (kidx, key) in enumerate(keys(d))
+            # println(keys(d[key]))
+            ϕA_array[:, kidx] = read(d[key], "phiA")
+            ϕB_array[:, kidx] = read(d[key], "phiB")
+            t_array[kidx] = read(d[key], "t")
+            if kidx == 1
+                x_array[:] = read(d[key], "x")
+            end
+        end
+    end
+    return ϕA_array, ϕB_array, x_array ,t_array, params
 end
 
 function nan_check(x::Array{T, 1}) where T<:AbstractFloat
