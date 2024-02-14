@@ -70,34 +70,38 @@ function parse_commandline()
             help = "where to save output"
             arg_type = String
             default = "."
+        "--filename"
+            help = "name of save file"
+            arg_type = String
+            default = "data"
 
     end
 
     return parse_args(s)
 end
 
-function load_data(savepath)
-    # load data
-    files = readdir(savepath, join=true)
-    params = JSON.parsefile(files[end])
-    N_saved = length(files) - 1
+# function load_data(savepath)
+#     # load data
+#     files = readdir(savepath, join=true)
+#     params = JSON.parsefile(files[end])
+#     N_saved = length(files) - 1
 
-    ϕA_array = Array{Float64}(undef, params["Nx"], N_saved)
-    ϕB_array = Array{Float64}(undef, params["Nx"], N_saved)
-    x_array = Array{Float64}(undef, params["Nx"])
-    t_array = Array{Float64}(undef, N_saved)
-    for (fidx, file) in enumerate(files[1:end-1])
-        h5open(file, "r") do d
-            ϕA_array[:, fidx] = read(d["data"], "phiA")
-            ϕB_array[:, fidx] = read(d["data"], "phiB")
-            t_array[fidx] = read(d["data"], "t")
-            if fidx == 1
-                x_array[:] = read(d["data"], "x")
-            end
-        end
-    end
-    return ϕA_array, ϕB_array, x_array, t_array
-end
+#     ϕA_array = Array{Float64}(undef, params["Nx"], N_saved)
+#     ϕB_array = Array{Float64}(undef, params["Nx"], N_saved)
+#     x_array = Array{Float64}(undef, params["Nx"])
+#     t_array = Array{Float64}(undef, N_saved)
+#     for (fidx, file) in enumerate(files[1:end-1])
+#         h5open(file, "r") do d
+#             ϕA_array[:, fidx] = read(d["data"], "phiA")
+#             ϕB_array[:, fidx] = read(d["data"], "phiB")
+#             t_array[fidx] = read(d["data"], "t")
+#             if fidx == 1
+#                 x_array[:] = read(d["data"], "x")
+#             end
+#         end
+#     end
+#     return ϕA_array, ϕB_array, x_array, t_array
+# end
 
 
 function make_movie(ϕA::Array{Float64, 2}, ϕB::Array{Float64, 2},
@@ -165,28 +169,31 @@ function main()
     snapshot = parsed_args["snapshot"]
     viz_skip = parsed_args["viz_skip"]
     savepath = string(rstrip(parsed_args["savepath"], ['/']))
+    filename = string(parsed_args["filename"])
 
     # run burn-in
     println("Running burn-in...")
-    ϕA, ϕB, t = run_simulation(dx, Nx, dt, Nt_burn, Nt_burn, savepath,
+    ϕA, ϕB, t = run_simulation(dx, Nx, dt, Nt_burn, Nt_burn, savepath, filename,
                                ϕA0=ϕA0, ϕB0=ϕB0, δϕA0=δϕA0, δϕB0=δϕB0,
                                α=α, δ=δ, κ=κ, temp=temp, Γ=Γ);
 
     # run sim after burn-in
     println("Running sim...")
     _, _, _ = run_simulation(ϕA, ϕB, t, dx, Nx, dt, Nt_save,
-                               snapshot, savepath,
-                               ϕA0=ϕA0, ϕB0=ϕB0, δϕA0=δϕA0, δϕB0=δϕB0,
-                               α=α, δ=δ, κ=κ, temp=temp, Γ=Γ);
+                             snapshot, savepath, filename,
+                             ϕA0=ϕA0, ϕB0=ϕB0, δϕA0=δϕA0, δϕB0=δϕB0,
+                             α=α, δ=δ, κ=κ, temp=temp, Γ=Γ);
 
     # load data
-    ϕA, ϕB, x, t = load_data(savepath)
+    ϕA, ϕB, x, t, params = load_data(savepath)
 
-    # make visualizations
-    println("Making movie...")
-    make_movie(ϕA, ϕB, x, t, savepath, viz_skip)
-    println("Making kymograph...")
-    make_kymo(ϕA, ϕB, x, t, savepath, viz_skip)
+    if viz_skip > 0
+        # make visualizations
+        println("Making movie...")
+        make_movie(ϕA, ϕB, x, t, savepath, viz_skip)
+        println("Making kymograph...")
+        make_kymo(ϕA, ϕB, x, t, savepath, viz_skip)
+    end
 
     println("Done.")
 end
