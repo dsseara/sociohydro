@@ -5,7 +5,7 @@ Pkg.instantiate()
 using SchellingMF
 using ArgParse
 using HDF5
-using Plots
+# using Plots
 using LaTeXStrings
 using JSON
 
@@ -185,15 +185,15 @@ function main()
                              α=α, δ=δ, κ=κ, temp=temp, Γ=Γ);
 
     # load data
-    ϕA, ϕB, x, t, params = load_data(savepath)
+    # ϕA, ϕB, x, t, params = load_data(savepath)
 
-    if viz_skip > 0
-        # make visualizations
-        println("Making movie...")
-        make_movie(ϕA, ϕB, x, t, savepath, viz_skip)
-        println("Making kymograph...")
-        make_kymo(ϕA, ϕB, x, t, savepath, viz_skip)
-    end
+    # if viz_skip > 0
+    #     # make visualizations
+    #     println("Making movie...")
+    #     make_movie(ϕA, ϕB, x, t, savepath, viz_skip)
+    #     println("Making kymograph...")
+    #     make_kymo(ϕA, ϕB, x, t, savepath, viz_skip)
+    # end
 
     println("Done.")
 end
