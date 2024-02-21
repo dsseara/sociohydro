@@ -104,44 +104,44 @@ end
 # end
 
 
-function make_movie(ϕA::Array{Float64, 2}, ϕB::Array{Float64, 2},
-                    x::Array{Float64, 1}, t::Array{Float64, 1},
-                    savepath::String, skip::Int64)
+# function make_movie(ϕA::Array{Float64, 2}, ϕB::Array{Float64, 2},
+#                     x::Array{Float64, 1}, t::Array{Float64, 1},
+#                     savepath::String, skip::Int64)
 
-    # create animation
-    anim = @animate for ii in 1:skip:length(t)
-    plot(x, ϕA[:, ii], lw=2, label=L"A")
-    plot!(x, ϕB[:, ii], lw=2, label=L"B")
-    plot!(ylim=(-0.1, 1.1), xlims=(minimum(x), maximum(x)),
-          framestyle=:box, thickness_scaling=1.5,
-          xlabel=L"x", ylabel=L"\phi^a",
-          title=L"t = " * string(round.(t[ii], digits=2)),
-          leg=:outerright)
-    end
+#     # create animation
+#     anim = @animate for ii in 1:skip:length(t)
+#     plot(x, ϕA[:, ii], lw=2, label=L"A")
+#     plot!(x, ϕB[:, ii], lw=2, label=L"B")
+#     plot!(ylim=(-0.1, 1.1), xlims=(minimum(x), maximum(x)),
+#           framestyle=:box, thickness_scaling=1.5,
+#           xlabel=L"x", ylabel=L"\phi^a",
+#           title=L"t = " * string(round.(t[ii], digits=2)),
+#           leg=:outerright)
+#     end
 
-    mp4(anim, savepath * "_movie.mp4", fps=20)
-end
+#     mp4(anim, savepath * "_movie.mp4", fps=20)
+# end
 
 
-function make_kymo(ϕA::Array{Float64, 2}, ϕB::Array{Float64, 2},
-                   x::Array{Float64, 1}, t::Array{Float64, 1},
-                   savepath::String, skip::Int64)
+# function make_kymo(ϕA::Array{Float64, 2}, ϕB::Array{Float64, 2},
+#                    x::Array{Float64, 1}, t::Array{Float64, 1},
+#                    savepath::String, skip::Int64)
 
-    hA = heatmap(x, t[1:skip:end], transpose(ϕA[:, 1:skip:end]),
-                 cmap=:Blues, clims=(0, 1),
-                 title=L"ϕ^A", xlabel=L"x", ylabel=L"t")
-    hB = heatmap(x, t[1:skip:end], transpose(ϕB[:, 1:skip:end]),
-                 cmap=:Reds, clims=(0, 1),
-                 title=L"ϕ^B", yformatter=_->"", xlabel=L"x")
-    hC = heatmap(x, t[1:skip:end], transpose(ϕA[:, 1:skip:end] - ϕB[:, 1:skip:end]),
-                 cmap=cgrad(:RdBu), clims=(-1, 1),
-                 title=L"ϕ^A - ϕ^B", yformatter=_->"", xlabel=L"x")
-    p = plot(hA, hB, hC, layout=(1, 3),
-             framestyle=:box, size=(900, 300), legend=true,
-             thickness_scaling=1.5)
-    savefig(p, savepath * "_kymo.pdf")
+#     hA = heatmap(x, t[1:skip:end], transpose(ϕA[:, 1:skip:end]),
+#                  cmap=:Blues, clims=(0, 1),
+#                  title=L"ϕ^A", xlabel=L"x", ylabel=L"t")
+#     hB = heatmap(x, t[1:skip:end], transpose(ϕB[:, 1:skip:end]),
+#                  cmap=:Reds, clims=(0, 1),
+#                  title=L"ϕ^B", yformatter=_->"", xlabel=L"x")
+#     hC = heatmap(x, t[1:skip:end], transpose(ϕA[:, 1:skip:end] - ϕB[:, 1:skip:end]),
+#                  cmap=cgrad(:RdBu), clims=(-1, 1),
+#                  title=L"ϕ^A - ϕ^B", yformatter=_->"", xlabel=L"x")
+#     p = plot(hA, hB, hC, layout=(1, 3),
+#              framestyle=:box, size=(900, 300), legend=true,
+#              thickness_scaling=1.5)
+#     savefig(p, savepath * "_kymo.pdf")
 
-end
+# end
 
 function main()
     parsed_args = parse_commandline()
