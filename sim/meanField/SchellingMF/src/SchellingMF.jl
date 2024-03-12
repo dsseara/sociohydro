@@ -7,6 +7,7 @@ using Printf
 using HDF5
 using JSON
 using ProgressMeter
+# using Zygote
 
 export run_simulation, update!, load_data
 
@@ -46,31 +47,31 @@ gradlap(Nx::Int64, dx::Float64) = diagm(-(Nx - 1) => [-13/8],
                                         +(Nx - 1) => [+13 / 8]) ./ dx^3
 
 
-f(x::AbstractFloat) = x - 1
-df(x::AbstractFloat) = 1
+# f(x::AbstractFloat) = x - 1
+# df(x::AbstractFloat) = 1
 
 
-function fitness(ϕA::Array{T, 1}, ϕB::Array{T, 1},
-                 δ::T, κ::T) where T<:AbstractFloat
-    # fitness
-    πA = @. ϕA + (κ - δ) * ϕB / 2
-    πB = @. ϕB * (1 - ϕB) + (κ + δ) * ϕA / 2
+# function fitness(ϕA::Array{T, 1}, ϕB::Array{T, 1},
+#                  δ::T, κ::T) where T<:AbstractFloat
+#     # fitness
+#     πA = @. ϕA + (κ - δ) * ϕB / 2
+#     πB = @. ϕB * (1 - ϕB) + (κ +s δ) * ϕA / 2
 
-    # fitness derivatives
-    dπA_dϕA = @. 1
-    dπA_dϕB = @. (κ - δ) / 2
-    dπB_dϕA = @. (κ + δ) / 2
-    dπB_dϕB = @. 1 - 2 * ϕB
+#     # fitness derivatives
+#     dπA_dϕA = @. 1
+#     dπA_dϕB = @. (κ - δ) / 2
+#     dπB_dϕA = @. (κ + δ) / 2
+#     dπB_dϕB = @. 1 - 2 * ϕB
 
-    # global fitness
-    U = @. ϕA * πA + ϕB * πB
+#     # global fitness
+#     U = @. ϕA * πA + ϕB * πB
 
-    # global fitness derivatives
-    dU_dϕA = @. πA + ϕA * dπA_dϕA + ϕB * dπB_dϕA
-    dU_dϕB = @. πB + ϕB * dπB_dϕB + ϕA * dπA_dϕB
+#     # global fitness derivatives
+#     dU_dϕA = @. πA + ϕA * dπA_dϕA + ϕB * dπB_dϕA
+#     dU_dϕB = @. πB + ϕB * dπB_dϕB + ϕA * dπA_dϕB
 
-    return πA, πB, dπA_dϕA, dπA_dϕB, dπB_dϕA, dπB_dϕB, U, dU_dϕA, dU_dϕB
-end
+#     return πA, πB, dπA_dϕA, dπA_dϕB, dπB_dϕA, dπB_dϕB, U, dU_dϕA, dU_dϕB
+# end
 
 
 function mobility(x, y)
@@ -78,10 +79,23 @@ function mobility(x, y)
 end
 
 
+# function totalFitness(ϕA::T, ϕB::T,
+#                       πA::Function, πB::Function) where T<:AbstractFloat
+#     return ϕA * πA(ϕA, ϕB) + ϕB * πB(ϕA, ϕB)
+# end
+
+# function ∂U(ϕA::T, ϕB::T, πA::Function, πB::Function) where T<:AbstractFloat
+#     return gradient((ϕA, ϕB) -> totalFitness())
+# end
+
+# ∂U(ϕA, ϕB) = stack(gradient.((ϕA, ϕB)->totalFitness(ϕA, ϕB, πA, πB)))
+
+
 function compute_force(ϕA::Array{T, 1}, ϕB::Array{T, 1},
-                       dx::T, Nx::Int64;
-                       α::T = 0.0, δ::T = 0.0, κ::T = 1.0,
-                       temp::T = 0.1, Γ::T = 0.5) where T<:AbstractFloat
+                       dx::T, Nx::Int64,
+                       πA::Function, πB::Function;
+                       α::T = 0.0, temp::T = 0.1,
+                       Γ::T = 0.5) where T<:AbstractFloat
     
     ### preallocation ###
     mA = similar(ϕA)
@@ -100,8 +114,8 @@ function compute_force(ϕA::Array{T, 1}, ϕB::Array{T, 1},
 
     ∇πA = similar(ϕA)
     ∇πB = similar(ϕB)
-    ∇dU_dϕA = similar(ϕA)
-    ∇dU_dϕB = similar(ϕB)
+    ∇∂U_∂ϕA = similar(ϕA)
+    ∇∂U_∂ϕB = similar(ϕB)
     ∇fitnessA = similar(ϕA)
     ∇fitnessB = similar(ϕB)
 
@@ -126,13 +140,28 @@ function compute_force(ϕA::Array{T, 1}, ϕB::Array{T, 1},
     mul!(∇mBΓ∇³ϕB, ∇, mB .* Γ∇³ϕB)
 
     # fitness dynamics
-    πA, πB, dπA_dϕA, dπA_dϕB, dπB_dϕA, dπB_dϕB, U, dU_dϕA, dU_dϕB = fitness(ϕA, ϕB, δ, κ)
-    mul!(∇πA, ∇, πA)
-    mul!(∇πB, ∇, πB)
-    mul!(∇dU_dϕA, ∇, dU_dϕA)
-    mul!(∇dU_dϕB, ∇, dU_dϕB)
-    mul!(∇fitnessA, ∇, mA .* ((1 - α) .* ∇πA .+ α .* ∇dU_dϕA))
-    mul!(∇fitnessB, ∇, mB .* ((1 - α) .* ∇πB .+ α .* ∇dU_dϕB))
+    # ∂πA = gradient.(πA, ϕA, ϕB)
+    # ∂πA_∂ϕA = [∂πA[i][1] for i in 1:length(ϕA)]
+    # ∂πA_∂ϕB = [∂πA[i][2] for i in 1:length(ϕB)]
+
+    # ∂πB = gradient.(πB, ϕA, ϕB)
+    # ∂πB_∂ϕA = [∂πB[i][1] for i in 1:length(ϕA)]
+    # ∂πB_∂ϕB = [∂πB[i][2] for i in 1:length(ϕB)]
+
+    # U(ϕA, ϕB) = totalFitness(ϕA, ϕB, πA, πB)
+    # ∂U = gradient.((ϕA, ϕB) -> totalFitness(ϕA, ϕB, πA, πB), ϕA, ϕB)
+    # ∂U_∂ϕA = [∂U[i][1] for i in 1:length(ϕA)]
+    # ∂U_∂ϕB = [∂U[i][2] for i in 1:length(ϕB)]
+
+    # πA, πB, dπA_dϕA, dπA_dϕB, dπB_dϕA, dπB_dϕB, U, dU_dϕA, dU_dϕB = fitness(ϕA, ϕB, δ, κ)
+    mul!(∇πA, ∇, πA.(ϕA, ϕB))
+    mul!(∇πB, ∇, πB.(ϕA, ϕB))
+    # mul!(∇∂U_∂ϕA, ∇, ∂U_∂ϕA)
+    # mul!(∇∂U_∂ϕB, ∇, ∂U_∂ϕB)
+    # mul!(∇fitnessA, ∇, mA .* ((1 - α) .* ∇πA .+ α .* ∇∂U_∂ϕA))
+    mul!(∇fitnessA, ∇, mA .* ∇πA)
+    # mul!(∇fitnessB, ∇, mB .* ((1 - α) .* ∇πB .+ α .* ∇∂U_∂ϕB))
+    mul!(∇fitnessB, ∇, mB .* ∇πB)
 
     # forces
     FA = @. T∇²ϕA - TϕB∇²ϕA + TϕA∇²ϕB - ∇fitnessA - ∇mAΓ∇³ϕA
@@ -143,12 +172,14 @@ end
 
 
 function update!(ϕA::Array{T, 1}, ϕB::Array{T, 1},
-                 dx::T, Nx::Int64, dt::T;
-                 α::T = 0.0, δ::T = 0.0, κ::T = 1.0,
-                 temp::T = 0.1, Γ::T = 1.0) where T<:AbstractFloat
+                 dx::T, Nx::Int64, dt::T,
+                 πA::Function, πB::Function;
+                 α::T = 0.0, temp::T = 0.1,
+                 Γ::T = 1.0) where T<:AbstractFloat
     # get forces
     FA, FB = compute_force(ϕA, ϕB, dx, Nx,
-                           α=α, δ=δ, κ=κ,
+                           πA, πB,
+                           α=α,# δ=δ, κ=κ,
                            temp=temp, Γ=Γ)
     
     # update
@@ -172,34 +203,38 @@ end
 # This version starts with a random initial condition
 function run_simulation(dx::T, Nx::Int64,
                         dt::T, Nt::Int64,
+                        πA::Function, πB::Function,
                         snapshot::Int64,
                         savepath::String,
                         filename::String;
                         ϕA0::T = 0.25, ϕB0::T = 0.25,
                         δϕA0::T = 0.05, δϕB0::T = 0.05,
-                        α::T = 0.0, δ::T = 0.0, κ::T = 0.0,
-                        temp::T = 0.1, Γ::T =1.0) where T<:AbstractFloat
+                        α::T = 0.0, temp::T = 0.1,
+                        Γ::T =1.0) where T<:AbstractFloat
 
     ϕA, ϕB = random_state(Nx, ϕA0, ϕB0, δϕA0, δϕB0)
     t_init = 0.0
 
-    ϕA, ϕB, t = run_simulation(ϕA, ϕB,  t_init,
+    ϕA, ϕB, t = run_simulation(ϕA, ϕB, t_init,
                                dx, Nx, dt, Nt,
+                               πA, πB,
                                snapshot,savepath, filename,
-                               ϕA0=ϕA0, ϕB0=ϕB0, δϕA0=δϕA0, δϕB0=δϕB0,
-                               α=α, δ=δ, κ=κ, temp=temp, Γ=Γ)
+                               ϕA0=ϕA0, ϕB0=ϕB0,
+                               δϕA0=δϕA0, δϕB0=δϕB0,
+                               α=α, temp=temp, Γ=Γ)
     return ϕA, ϕB, t
 end
 
 # this version starts with a given initial condition
 function run_simulation(ϕA::Array{T, 1}, ϕB::Array{T, 1}, t_init::T,
                         dx::T, Nx::Int64, dt::T, Nt::Int64,
+                        πA::Function, πB::Function,
                         snapshot::Int64, savepath::String,
                         filename::String;
                         ϕA0::T = 0.25, ϕB0::T = 0.25,
                         δϕA0::T = 0.05, δϕB0::T = 0.05,
-                        α::T = 0.0, δ::T = 0.0, κ::T = 0.0,
-                        temp::T = 0.1, Γ::T =1.0) where T<:AbstractFloat
+                        α::T = 0.0, temp::T = 0.1,
+                        Γ::T =1.0) where T<:AbstractFloat
 
 
     if dt * dx^(-4) > 1/8
@@ -234,8 +269,8 @@ function run_simulation(ϕA::Array{T, 1}, ϕB::Array{T, 1}, t_init::T,
                   "savepath" => savepath,
                   "filename" => filename,
                   "α" => α,
-                  "δ" => δ,
-                  "κ" => κ,
+                  # "δ" => δ,
+                  # "κ" => κ,
                   "temp" => temp,
                   "Γ" => Γ)
 
@@ -253,7 +288,9 @@ function run_simulation(ϕA::Array{T, 1}, ϕB::Array{T, 1}, t_init::T,
     println("Starting main loop...")
     @showprogress for ii in 1:Nt
         ϕA, ϕB = update!(ϕA, ϕB, dx, Nx, dt,
-                         α=α, δ=δ, κ=κ, temp=temp, Γ=Γ)
+                         πA, πB,
+                         α=α,# δ=δ, κ=κ,
+                         temp=temp, Γ=Γ)
         t += dt
 
         if ii % snapshot == 0
