@@ -13,26 +13,7 @@ using StatsBase
 using LinearAlgebra
 using JSON
 
-export random_state, move!, gain, glauber_prob, utility, run_simulation!, run_simulation, save, select_particle, pick_sites, run_sweep!
-
-
-function random_state(params::Dict{String, Any})
-    # unpack parameters
-    Nx = params["grid_size"]
-    capacity = params["capacity"]
-    fillA, fillB = params["fill"]
-    
-    total_occupants_A = Int(floor(Nx * capacity * fillA))
-    total_occupants_B = Int(floor(Nx * capacity * fillB))
-    locations_A = rand(1:Nx, total_occupants_A)
-    locations_B = rand(1:Nx, total_occupants_B)
-    
-    state_A = [count(==(i), locations_A) for i in 1:Nx]
-    state_B = [count(==(i), locations_B) for i in 1:Nx]
-    
-    state = cat(state_A, state_B, dims=2)
-    return state
-end
+export random_state, move!, gain, glauber_prob, utility, run_simulation!, run_simulation, save, select_particle, pick_sites, run_sweep!, load_data
 
 
 """
@@ -80,7 +61,8 @@ Based on Grauwin et al, PNAS 2009
       the system after evolving for n_sweeps
 """
 function run_simulation!(state::Matrix{Int64},
-                         params::Dict{String, Any})
+                         params::Dict{String, Any},
+                         utilities::Function)
     # sim params
     dt = params["dt"]
     n_sweeps = params["n_sweeps"]
@@ -88,9 +70,8 @@ function run_simulation!(state::Matrix{Int64},
     Nx = params["grid_size"]
     fill = params["fill"]
     α = params["alpha"]
-    δ = params["delta"]
-    κ = params["kappa"]
     temp = params["temperature"]
+
     # storage params
     snapshot = params["snapshot"]
     savepath = params["savepath"]
@@ -121,8 +102,8 @@ function run_simulation!(state::Matrix{Int64},
                    total_occupants,
                    dt, capacity,
                    Nx, fill,
-                   α, δ,
-                   κ, temp)
+                   α, temp,
+                   utilities)
         
         # snapshot = -1 means only
         # save initial and final
@@ -140,17 +121,44 @@ function run_simulation!(state::Matrix{Int64},
     return state
 end
 
+# starts from a random initial state
+function run_simulation(params::Dict{String, Any},
+                        utilities::Function)
+    state = random_state(params)
+    run_simulation!(state, params, utilities)
+    return state
+end
+
+
+function random_state(params::Dict{String, Any})
+    # unpack parameters
+    Nx = params["grid_size"]
+    capacity = params["capacity"]
+    fillA, fillB = params["fill"]
+
+    total_occupants_A = Int(floor(Nx * capacity * fillA))
+    total_occupants_B = Int(floor(Nx * capacity * fillB))
+    locations_A = rand(1:Nx, total_occupants_A)
+    locations_B = rand(1:Nx, total_occupants_B)
+
+    state_A = [count(==(i), locations_A) for i in 1:Nx]
+    state_B = [count(==(i), locations_B) for i in 1:Nx]
+
+    state = cat(state_A, state_B, dims=2)
+    return state
+end
+
 
 function run_sweep!(state::Matrix{Int64},
                     n_steps::Int64, dt::Float64,
                     capacity::Int64, Nx::Int64,
                     fill::Vector{Float64},
-                    alpha::Float64, delta::Float64,
-                    kappa::Float64, temp::Float64)
+                    alpha::Float64, temp::Float64,
+                    utilities::Function)
     rs = rand(n_steps)
     for jj in 1:n_steps
         move!(state, dt, capacity, Nx, fill,
-              alpha, delta, kappa, temp,
+              alpha, temp, utilities,
               rs[jj])
     end
     return state
@@ -163,15 +171,14 @@ function move!(state::Matrix{Int64},
                Nx::Int64,
                fill::Vector{Float64},
                alpha::Float64,
-               delta::Float64,
-               kappa::Float64,
                temp::Float64,
+               utilities::Function,
                r::Float64)
     # select particle to move and where to move to
     from, tos, weights = pick_sites(state, capacity, Nx, fill)
 
     # find gains of each move
-    Gs = gain(state, from, tos, alpha, delta, kappa, capacity, Nx)
+    Gs = gain(state, from, tos, alpha, capacity, Nx, utilities)
     
     # calculate probability of moving using Glauber-like rule
     gprobs = glauber_prob(Gs, temp, dt)
@@ -263,10 +270,9 @@ function gain(state::Matrix{Int64},
               from::CartesianIndex{2},
               tos::Array{CartesianIndex{2}, 1},
               alpha::Float64,
-              delta::Float64,
-              kappa::Float64,
               capacity::Int64,
-              Nx::Int64) 
+              Nx::Int64,
+              utilities::Function)
 
     # state_new = copy(state_old)
     # state_new[from] -= 1
@@ -278,23 +284,23 @@ function gain(state::Matrix{Int64},
     # where to move to
     Gs = Array{Float64}(undef, length(tos))
 
-    # calcualte utilities of origin location before and after move
+    # calculate utilities of origin location before and after move
     # common to all options of where to move to
-    utility_from_old = utility(state[from[1], :], capacity, delta, kappa)
-    utility_from_new = utility((state[from[1], :] - ∆N), capacity, delta, kappa)
+    utility_from_old = utilities(state[from[1], :], capacity)
+    utility_from_new = utilities((state[from[1], :] - ∆N), capacity)
 
     for (toidx, to) in enumerate(tos)
-        utility_to_old   = utility(state[to[1], :],  capacity, delta, kappa)
-        utility_to_new   = utility((state[to[1], :] + ∆N),  capacity, delta, kappa)
+        utility_to_old   = utilities(state[to[1], :],  capacity)
+        utility_to_new   = utilities((state[to[1], :] + ∆N),  capacity)
 
         # calculate change in utility only of mover
         selfish = utility_to_new[from[2]] - utility_from_old[from[2]]
 
         # calculate change in utility of everyone
         altruistic = sum(+ (state[to[1], :] + ∆N)   .* utility_to_new
-                         - state[to[1], :]   .* utility_to_old
+                         - state[to[1], :]          .* utility_to_old
                          + (state[from[1], :] - ∆N) .* utility_from_new
-                         - state[from[1], :] .* utility_from_old)
+                         - state[from[1], :]        .* utility_from_old)
 
         # calculate change in gradient penalizing term, n ∇^2 ϕ
         # got this from using mathematica to find expression for
@@ -304,7 +310,7 @@ function gain(state::Matrix{Int64},
                     + 3 * state[from] - 3 * state[to]
                     + state[mod1(to[1] + direction, Nx), to[2]] - 3) / capacity
 
-        Gs[toidx] =alpha * altruistic + (1 - alpha) * selfish + lap_diff
+        Gs[toidx] = alpha * altruistic + (1 - alpha) * selfish + lap_diff
     end
 
     return Gs
@@ -373,32 +379,32 @@ Calculate the asymmetric utility function for an array
 - utility : 2-element array
     - utility of each species, between [0, 1]
 """
-function asymmetric_utility(x::Vector{T} where {T<:Real},
-                            params::Dict{String, Any})
-    # unpack parameters
-    x0 = params["preferred_density"]
-    m = params["m"]
-    delta = params["delta"]
+# function asymmetric_utility(x::Vector{T} where {T<:Real},
+#                             params::Dict{String, Any})
+#     # unpack parameters
+#     x0 = params["preferred_density"]
+#     m = params["m"]
+#     delta = params["delta"]
     
-    xA, xB = x
+#     xA, xB = x
     
-    if xA < x0
-        uA = 2 * xA
-    else
-        uA = m +  2 * (1 - m) * (1 - xA)
-    end
+#     if xA < x0
+#         uA = 2 * xA
+#     else
+#         uA = m +  2 * (1 - m) * (1 - xA)
+#     end
     
-    if xB < x0
-        uB = 2 * xB
-    else
-        uB = m +  2 * (1 - m) * (1 - xB)
-    end
+#     if xB < x0
+#         uB = 2 * xB
+#     else
+#         uB = m +  2 * (1 - m) * (1 - xB)
+#     end
     
-    utility = [uA + delta * uB,
-               uB - delta * uA]
+#     utility = [uA + delta * uB,
+#                uB - delta * uA]
 
-    return utility
-end
+#     return utility
+# end
 
 
 """
@@ -418,29 +424,26 @@ Calculate the linear utility function for an array
 - utility : 2-element array
     - utility of each species, between [0, 1]
 """
-function utility(n::Vector{Int64},
-                 capacity::Int64,
-                 delta::T, kappa::T) where T<:AbstractFloat
-    πs = Vector{Float64}(undef, 2)
+# function utility(n::Vector{Int64},
+#                  capacity::Int64,
+#                  delta::T, kappa::T) where T<:AbstractFloat
+#     πs = Vector{Float64}(undef, 2)
     
-    nA, nB = n
-    ϕA = nA / capacity
-    ϕB = nB / capacity
+#     nA, nB = n
+#     ϕA = nA / capacity
+#     ϕB = nB / capacity
     
-    # don't count self as a neighbor
-    # uA = 4 * (ϕA - capacity^(-1)) * (1 - (ϕA - capacity^(-1)))
-    uA = (ϕA - capacity^(-1))
-    # uB = 4 * (ϕB - capacity^(-1)) * (1 - (ϕB - capacity^(-1)))
-    uB = (ϕB - capacity^(-1))
+#     # don't count self as a neighbor
+#     # uA = 4 * (ϕA - capacity^(-1)) * (1 - (ϕA - capacity^(-1)))
+#     uA = (ϕA - capacity^(-1))
+#     # uB = 4 * (ϕB - capacity^(-1)) * (1 - (ϕB - capacity^(-1)))
+#     uB = (ϕB - capacity^(-1))
     
-    πs = [uA + (kappa - delta) * ϕB / 2,
-          uB + (kappa + delta) * ϕA / 2]
+#     πs = [uA + (kappa - delta) * ϕB / 2,
+#           uB + (kappa + delta) * ϕA / 2]
 
-    return πs
-end
-
-
-# function linear_utility(n)
+#     return πs
+# end
 
 
 function save(state::Matrix{T},
@@ -466,6 +469,29 @@ function save(state::Matrix{T},
         d = create_group(fid, groupname)
         d["state"] = state
         d["sweep"] = sweep
+    end
+end
+
+searchdir(path, key) = filter(x->occursin(key,x), readdir(path, join=true))
+
+function load_data(path)
+    file = searchdir(path, "hdf5")[1]
+    params = JSON.parsefile(searchdir(path, "json")[1])
+
+    x = collect(1:params["grid_size"])
+
+    h5open(file, "r") do d
+        groups = keys(d)
+        t = Array{Float64}(undef, length(groups))
+        ϕA = Array{Float64}(undef, params["grid_size"], length(groups))
+        ϕB = Array{Float64}(undef, params["grid_size"], length(groups))
+        for (gidx, g) in enumerate(groups)
+            state = read(d[g], "state")
+            ϕA[:, gidx] = state[:, 1]
+            ϕB[:, gidx] = state[:, 2]
+            t[gidx] = read(d[g], "sweep")
+        end
+        return ϕA ./ params["capacity"], ϕB ./ params["capacity"], x, t .* params["dt"], params
     end
 end
 
