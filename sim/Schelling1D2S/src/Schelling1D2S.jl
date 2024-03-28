@@ -183,7 +183,7 @@ function move!(state::Matrix{Int64},
     # calculate probability of moving using Glauber-like rule
     gprobs = glauber_prob(Gs, temp, dt)
 
-    probs = [w * g for (w, g) in zip(weights, gprobs)]
+    probs = weights .* gprobs
     # probs ./= sum(probs)
 
     # use random number to select whether to move or not
@@ -280,27 +280,35 @@ function gain(state::Matrix{Int64},
     ∆N = [0, 0]
     ∆N[from[2]] = 1
 
+    state_from_new = state[from[1], :] - ∆N
+    state_from_old = state[from[1], :]
+
     # preallocate gains for each choice of
     # where to move to
     Gs = Array{Float64}(undef, length(tos))
+    altruistic = Array{Float64}(undef, length(tos))
 
     # calculate utilities of origin location before and after move
     # common to all options of where to move to
-    utility_from_old = utilities(state[from[1], :], capacity)
-    utility_from_new = utilities((state[from[1], :] - ∆N), capacity)
+    utility_from_old = utilities(state_from_old, capacity)
+    utility_from_new = utilities(state_from_new, capacity)
 
     for (toidx, to) in enumerate(tos)
-        utility_to_old   = utilities(state[to[1], :],  capacity)
-        utility_to_new   = utilities((state[to[1], :] + ∆N),  capacity)
+        state_to_new = state[to[1], :] + ∆N
+        state_to_old = state[to[1], :]
+
+        utility_to_old = utilities(state_to_old,  capacity)
+        utility_to_new = utilities(state_to_new,  capacity)
 
         # calculate change in utility only of mover
         selfish = utility_to_new[from[2]] - utility_from_old[from[2]]
 
         # calculate change in utility of everyone
-        altruistic = sum(+ (state[to[1], :] + ∆N)   .* utility_to_new
-                         - state[to[1], :]          .* utility_to_old
-                         + (state[from[1], :] - ∆N) .* utility_from_new
-                         - state[from[1], :]        .* utility_from_old)
+        altruistic = @. (state_to_new * utility_to_new
+                         - state_to_old * utility_to_old
+                         + state_from_new * utility_from_new
+                         - state_from_old * utility_from_old)
+        ΔU = sum(altruistic)
 
         # calculate change in gradient penalizing term, n ∇^2 ϕ
         # got this from using mathematica to find expression for
@@ -310,7 +318,7 @@ function gain(state::Matrix{Int64},
                     + 3 * state[from] - 3 * state[to]
                     + state[mod1(to[1] + direction, Nx), to[2]] - 3) / capacity
 
-        Gs[toidx] = alpha * altruistic + (1 - alpha) * selfish + lap_diff
+        Gs[toidx] = alpha * ΔU + (1 - alpha) * selfish + lap_diff
     end
 
     return Gs
