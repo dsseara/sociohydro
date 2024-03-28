@@ -54,6 +54,13 @@ Based on Grauwin et al, PNAS 2009
         - path to folder where to save output
     - params["filename"]
         - name of file to save data into
+- utilities : Function
+    - πA, πB = utilities(local_state::Vector{Int64}, capacity::Int64)
+    - returns the utilities of both groups.
+      Takes the local state (i.e the numbers of individuals at a single site)
+      and carrying capacity.
+- sweep : Int (optional)
+    - gives the starting sweep number of the simulation
 
 ## Outputs
 - state : array
@@ -62,7 +69,8 @@ Based on Grauwin et al, PNAS 2009
 """
 function run_simulation!(state::Matrix{Int64},
                          params::Dict{String, Any},
-                         utilities::Function)
+                         utilities::Function;
+                         sweep::Int64=0)
     # sim params
     dt = params["dt"]
     n_sweeps = params["n_sweeps"]
@@ -77,27 +85,12 @@ function run_simulation!(state::Matrix{Int64},
     savepath = params["savepath"]
     filename = params["filename"]
 
-    # create savepath
-    if isdir(savepath)
-        for file in readdir(savepath, join=true)
-            rm(file)
-        end
-    else
-        mkpath(savepath)
-    end
-
-    # save params and initial state
-    param_filename = filename * "_params.json"
-    open(savepath * "/" * param_filename, "w") do f
-        JSON.print(f, params, 4)
-    end
-    save(state, params, sweep=0)
 
     # calculate how many steps per sweep
     total_occupants = sum(state)
 
     # main loop
-    @showprogress 1 for ii in 1:n_sweeps
+    @showprogress 1 for ii in sweep+1:sweep+n_sweeps
         run_sweep!(state,
                    total_occupants,
                    dt, capacity,
@@ -124,8 +117,32 @@ end
 # starts from a random initial state
 function run_simulation(params::Dict{String, Any},
                         utilities::Function)
+    savepath = params["savepath"]
+    filename = params["filename"]
+
+    # create random initial condition
     state = random_state(params)
-    run_simulation!(state, params, utilities)
+
+    # create savepath
+    if isdir(savepath)
+        for file in readdir(savepath, join=true)
+            rm(file)
+        end
+    else
+        mkpath(savepath)
+    end
+
+    # save params and initial state
+    param_filename = filename * "_params.json"
+    open(savepath * "/" * param_filename, "w") do f
+        JSON.print(f, params, 4)
+    end
+    save(state, params, sweep=0)
+
+    # run simulation
+    run_simulation!(state, params, utilities,
+                    sweep=0)
+
     return state
 end
 
@@ -474,9 +491,11 @@ function save(state::Matrix{T},
     filepath = savepath * filesep * filename
     
     h5open(filepath, "cw") do fid
-        d = create_group(fid, groupname)
-        d["state"] = state
-        d["sweep"] = sweep
+        if !(groupname in keys(fid))
+            d = create_group(fid, groupname)
+            d["state"] = state
+            d["sweep"] = sweep
+        end
     end
 end
 
