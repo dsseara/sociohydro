@@ -17,7 +17,10 @@ export random_state, move!, gain, glauber_prob, utility, run_simulation!, run_si
 
 
 """
-    run_simulation!(state, params)
+    run_simulation!(state::Matrix{Int64},
+                    params::Dict{String, Any},
+                    utilities::Function;
+                    sweep::Int64=0)
 
 Run a simulation of the 1D, 2 species Shelling model
 Based on Grauwin et al, PNAS 2009
@@ -77,7 +80,7 @@ function run_simulation!(state::Matrix{Int64},
     capacity = params["capacity"]
     Nx = params["grid_size"]
     fill = params["fill"]
-    α = params["alpha"]
+    alpha = params["alpha"]
     temp = params["temperature"]
 
     # storage params
@@ -95,7 +98,7 @@ function run_simulation!(state::Matrix{Int64},
                    total_occupants,
                    dt, capacity,
                    Nx, fill,
-                   α, temp,
+                   alpha, temp,
                    utilities)
         
         # snapshot = -1 means only
@@ -114,7 +117,12 @@ function run_simulation!(state::Matrix{Int64},
     return state
 end
 
-# starts from a random initial state
+"""
+    run_simulation(params::Dict{String, Any},
+                        utilities::Function)
+
+starts from a random initial state
+"""
 function run_simulation(params::Dict{String, Any},
                         utilities::Function)
     savepath = params["savepath"]
@@ -147,6 +155,11 @@ function run_simulation(params::Dict{String, Any},
 end
 
 
+"""
+    random_state(params::Dict{String, Any})
+
+TBW
+"""
 function random_state(params::Dict{String, Any})
     # unpack parameters
     Nx = params["grid_size"]
@@ -166,6 +179,16 @@ function random_state(params::Dict{String, Any})
 end
 
 
+"""
+    run_sweep!(state::Matrix{Int64},
+                    n_steps::Int64, dt::Float64,
+                    capacity::Int64, Nx::Int64,
+                    fill::Vector{Float64},
+                    alpha::Float64, temp::Float64,
+                    utilities::Function)
+
+TBW
+"""
 function run_sweep!(state::Matrix{Int64},
                     n_steps::Int64, dt::Float64,
                     capacity::Int64, Nx::Int64,

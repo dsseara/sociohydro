@@ -12,14 +12,16 @@ using ProgressMeter
 export run_simulation, update!, load_data
 
 # fourth order finite differences
-grad(Nx::Int64, dx::Float64) = diagm(-(Nx - 1) => [+2/3],
-                                  -(Nx - 2) => -(1/12) * ones(2),
-                                  -2 => (1/12) * ones(Nx - 2),
-                                  -1 => -(2/3) * ones(Nx - 1),
-                                  +1 => +(2/3) * ones(Nx - 1),
-                                  +2 => -(1/12) * ones(Nx - 2),
-                                  +(Nx - 2) => (1/12) * ones(2),
-                                  +(Nx - 1) => [-(2/3)]) ./ dx
+function grad(Nx::Int64, dx::Float64)
+    diagm(-(Nx - 1) => [+2/3],
+          -(Nx - 2) => -(1/12) * ones(2),
+          -2 => (1/12) * ones(Nx - 2),
+          -1 => -(2/3) * ones(Nx - 1),
+          +1 => +(2/3) * ones(Nx - 1),
+          +2 => -(1/12) * ones(Nx - 2),
+          +(Nx - 2) => (1/12) * ones(2),
+          +(Nx - 1) => [-(2/3)]) ./ dx
+end
 
 
 lap(Nx::Int64, dx::Float64) = diagm(-(Nx - 1) => [+4/3],
