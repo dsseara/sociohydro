@@ -16,6 +16,15 @@ if __name__ == "__main__":
                         help="path to hdf5 file with interpolated data")
     parser.add_argument("-duration", type=float, default=1000.0,
                         help="total duration of simulation")
+    parser.add_argument("-nt", type=int, default=100,
+                        help="number of time points to save")
+    parser.add_argument("-timestepper", type=str, default="exp",
+                        choices=["exp", "linear"],
+                        help="whether to use exponentially increasing time steps or the same time step")
+    parser.add_argument("-dt", type=float, default=1e-3,
+                        help="size of time step for linear stepper")
+    parser.add_argument("-dexp", type=float, default=-5,
+                        help="if exponential time stepping, initial time step is exp(dexp)")
     parser.add_argument("-kW", type=float, default=1.0,
                         help="self-utility of White population")
     parser.add_argument("-kB", type=float, default=1.0,
@@ -166,9 +175,9 @@ if __name__ == "__main__":
 
     eq = eqW_1 & eqW_2 & eqB_1 & eqB_2
 
-    dexp = -5
+    dexp = args.dexp
 
-    nt = 100
+    nt = args.nt
     ϕW_array = np.zeros((nt + 1, len(ϕW)))
     ϕB_array = np.zeros((nt + 1, len(ϕB)))
     ϕW_array[0] = ϕW.value
@@ -176,17 +185,28 @@ if __name__ == "__main__":
     t_save = np.linspace(0, duration, nt+1)
 
     elapsed = 0
-    flag = 0
-    while elapsed < duration:
-        dt = min(50, np.exp(dexp))
-        elapsed += dt
-        dexp += 0.01
-        eq.solve(dt=dt)
-        print(f"t={elapsed:0.2f} / {duration}", end="\r")
-        if elapsed >= t_save[flag]:
-            ϕW_array[flag] = ϕW.value
-            ϕB_array[flag] = ϕB.value
-            flag += 1
+    flag = 1
+    if args.timestepper == "exp":
+        while elapsed < duration:
+            dt = min(50, np.exp(dexp))
+            eq.solve(dt=dt)
+            elapsed += dt
+            dexp += 0.01
+            print(f"t={elapsed:0.2f} / {duration}", end="\r")
+            if elapsed >= t_save[flag]:
+                ϕW_array[flag] = ϕW.value
+                ϕB_array[flag] = ϕB.value
+                flag += 1
+    elif args.timestepper == "linear":
+        dt = args.dt
+        while elapsed < duration:
+            eq.solve(dt=dt)
+            elapsed += dt
+            print(f"t={elapsed:0.2f} / {duration}", end="\r")
+            if elapsed >= t_save[flag]:
+                ϕW_array[flag] = ϕW.value
+                ϕB_array[flag] = ϕB.value
+                flag += 1
 
     mseW = np.mean((ϕWf_cell - ϕW_array[-1])**2)
     mseB = np.mean((ϕBf_cell - ϕB_array[-1])**2)
