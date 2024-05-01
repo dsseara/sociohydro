@@ -98,7 +98,7 @@ def get_coords(boundary):
     return x, y
 
 
-def make_mesh(data: np.ndarray, x_grid, y_grid, crs,
+def make_mesh(data, x_grid, y_grid, crs,
               buffer, simplify, cellsize):
     """
     Start from data, create grid around non-nan values
