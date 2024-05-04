@@ -14,7 +14,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-datafile", type=str, required=True,
                         help="path to hdf5 file with interpolated data")
-    parser.add_argument("-duration", type=float, default=1000.0,
+    parser.add_argument("-duration", type=float, default=100.0,
                         help="total duration of simulation")
     parser.add_argument("-nt", type=int, default=100,
                         help="number of time points to save")
@@ -42,11 +42,11 @@ if __name__ == "__main__":
     parser.add_argument("-capacityType", type=str, default="local",
                         choices=["uniform", "local"],
                         help="how to calculate the carrying capacities")
-    parser.add_argument("-buffer", type=float, default=1000.0,
+    parser.add_argument("-buffer", type=float, default=1.0,
                         help="buffer for boundary simplification")
-    parser.add_argument("-simplify", type=float, default=1000.0,
+    parser.add_argument("-simplify", type=float, default=1.0,
                         help="simplify parameter for boundary simplification")
-    parser.add_argument("-cellsize", type=float, default=3e3,
+    parser.add_argument("-cellsize", type=float, default=3,
                         help="typical size of cells in mesh")
     parser.add_argument("-savefolder", type=str, default=".",
                         help="path to folder to save output")
@@ -54,7 +54,7 @@ if __name__ == "__main__":
                         help="name of file to save output")
     args = parser.parse_args()
 
-    # set up save environment
+    ### set up save environment ###
     datafile = os.path.join(args.savefolder, args.filename + ".hdf5")
     paramfile = os.path.join(args.savefolder, args.filename + "_params.json")
     if not os.path.exists(args.savefolder):
@@ -66,68 +66,84 @@ if __name__ == "__main__":
                 os.remove(file)
             except Exception as e:
                 print(f"could not delete {file}. Reason: {e}")
+    ###############
 
-    # save params
+    ### save params ###
     with open(paramfile, "w") as p:
         p.write(json.dumps(vars(args), indent=4))
+    ###############
 
-    with h5py.File(args.datafile, "r") as d:
-        x_grid = d["1990"]["x_grid"][:]
-        y_grid = d["1990"]["y_grid"][:]
-        black = d["1990"]["black_grid_masked"][:]
-        black_final = d["2020"]["black_grid_masked"][:]
-        white = d["1990"]["white_grid_masked"][:]
-        white_final = d["2020"]["white_grid_masked"][:]
-        total = d["1990"]["total_grid_masked"][:]
-        
-        # calculate capacity
-        if args.capacityType == "uniform":
-            capacity = -1e10
-            for key in d.keys():
-                    capacity = max(capacity, np.nanmax(d[key]["white_grid_masked"][:] + d[key]["black_grid_masked"][:]))
-        elif args.capacityType == "local":
-            capacity = np.zeros(x_grid.shape)
-            for key in d.keys():
-                capacity = np.fmax(capacity, d[key]["white_grid_masked"][:] + d[key]["black_grid_masked"][:])
+    ### load and set-up data ###
+    # initial condition
+    ϕW0, ϕB0, x, y = get_data(args.datafile,
+                              year=1990,
+                              region="masked",
+                              capacity_method=args.capacityType)
+    
+    # measure in terms of kilometers
+    x /= 1000.0
+    y /= 1000.0
 
-    # add a small bit to avoid zero, and inflate capacity to avoid one
-    ϕW0_grid = (white) / (1.1 * capacity)
-    ϕWf_grid = (white_final) / (1.1 * capacity)
-    ϕB0_grid = (black) / (1.1 * capacity)
-    ϕBf_grid = (black_final) / (1.1 * capacity)
+    # final condition
+    ϕWf, ϕBf, _, _ = get_data(args.datafile,
+                              year=2020,
+                              region="masked",
+                              capacity_method=args.capacityType)
+    
+    # get correlation length of white population
+    ξ, ξvar = get_corrLength(args.datafile, region="masked",
+                             capacity_method=args.capacityType,
+                             p0=[1, 10, 0])
 
-    # all cases fall into this CRS
-    crs = "ESRI:102003"
-    mesh, simple_boundary, geo_file_contents = make_mesh(total, x_grid, y_grid, crs,
+    # measure distances in units of ξ
+    # x /= ξ
+    # y /= ξ
+
+    # create mesh
+    crs = "ESRI:102003"  # all cases fall into this CRS
+    mesh, simple_boundary, geo_file_contents = make_mesh(ϕW0, x, y, crs,
                                                          args.buffer,
                                                          args.simplify,
                                                          args.cellsize)
 
     # perform interpolation from grid points to cell centers
-    grid_points = np.array([[x, y] for x, y in zip(x_grid.ravel(),
-                                                   y_grid.ravel())])
+    grid_points = np.array([[x, y] for x, y in zip(x.ravel(),
+                                                   y.ravel())])
     cell_points = np.array([[x, y] for x, y in zip(mesh.cellCenters.value[0],
                                                    mesh.cellCenters.value[1])])
     
     ϕW0_cell = interpolate.griddata(grid_points,
-                                    np.nan_to_num(ϕW0_grid.ravel(), nan=1e-3),
+                                    np.nan_to_num(ϕW0.ravel(), nan=1e-3),
                                     cell_points,
                                     fill_value=0)
     ϕWf_cell = interpolate.griddata(grid_points,
-                                    np.nan_to_num(ϕWf_grid.ravel(), nan=1e-3),
+                                    np.nan_to_num(ϕWf.ravel(), nan=1e-3),
                                     cell_points,
                                     fill_value=0)
 
     ϕB0_cell = interpolate.griddata(grid_points,
-                                    np.nan_to_num(ϕB0_grid.ravel(), nan=1e-3),
+                                    np.nan_to_num(ϕB0.ravel(), nan=1e-3),
                                     cell_points,
                                     fill_value=0)
     ϕBf_cell = interpolate.griddata(grid_points,
-                                    np.nan_to_num(ϕBf_grid.ravel(), nan=1e-3),
+                                    np.nan_to_num(ϕBf.ravel(), nan=1e-3),
                                     cell_points,
                                     fill_value=0)
+    ###############
 
+    ### save things common to all time-points ###
+    group_name = "common"
+    datadict = {"cell_centers": cell_points,
+                "phiW_initial": ϕW0_cell,
+                "phiB_initial": ϕB0_cell,
+                "phiW_final": ϕWf_cell,
+                "phiB_final": ϕBf_cell,
+                "corr_length": ξ,
+                "corr_length_var": ξvar}
+    dump(datafile, group_name, datadict)
+    ###############
 
+    ### build simulation ###
     # utility parameters
     κW = args.kW
     κp = args.kp
@@ -138,9 +154,6 @@ if __name__ == "__main__":
     Γ1 = args.gamma
     temp = args.temp
 
-    # simulation parameters
-    duration = args.duration
-    
     ϕW = fp.CellVariable(name=r"$\phi_W$", mesh=mesh)
     μW = fp.CellVariable(name=r"$\tilde{\mu}_W$", mesh=mesh)
     ϕB = fp.CellVariable(name=r"$\phi_B$", mesh=mesh)
@@ -174,52 +187,74 @@ if __name__ == "__main__":
              - fp.DiffusionTerm(coeff=Γ1, var=ϕB))
 
     eq = eqW_1 & eqW_2 & eqB_1 & eqB_2
+    ###############
 
+    ### set up simulation ###
+    duration = args.duration
     dexp = args.dexp
 
     nt = args.nt
-    ϕW_array = np.zeros((nt + 1, len(ϕW)))
-    ϕB_array = np.zeros((nt + 1, len(ϕB)))
-    ϕW_array[0] = ϕW.value
-    ϕB_array[0] = ϕB.value
+    # ϕW_array = np.zeros((nt + 1, len(ϕW)))
+    # ϕB_array = np.zeros((nt + 1, len(ϕB)))
+    # ϕW_array[0] = ϕW.value
+    # ϕB_array[0] = ϕB.value
     t_save = np.linspace(0, duration, nt+1)
 
     elapsed = 0
     flag = 1
-    if args.timestepper == "exp":
-        while elapsed < duration:
-            dt = min(50, np.exp(dexp))
-            eq.solve(dt=dt)
-            elapsed += dt
-            dexp += 0.01
+    dt = args.dt
+    ###############
+
+    ### start simulation ###
+    # if args.timestepper == "exp":
+    #     while elapsed < duration:
+    #         dt = min(50, np.exp(dexp))
+    #         eq.solve(dt=dt)
+    #         elapsed += dt
+    #         dexp += 0.01
+    #         print(f"t={elapsed:0.2f} / {duration}", end="\r")
+    #         if elapsed >= t_save[flag]:
+    #             gname = f"n{flag:06d}"
+    #             datadict = {"t": t_save[flag],
+    #                         "phiW": ϕW.value,
+    #                         "phiB": ϕB.value}
+    #             dump(datafile, gname, datadict)
+    #             flag += 1
+    # elif args.timestepper == "linear":
+    while elapsed < duration:
+        eq.solve(dt=dt)
+        elapsed += dt
+        if elapsed >= t_save[flag]:
             print(f"t={elapsed:0.2f} / {duration}", end="\r")
-            if elapsed >= t_save[flag]:
-                ϕW_array[flag] = ϕW.value
-                ϕB_array[flag] = ϕB.value
-                flag += 1
-    elif args.timestepper == "linear":
-        dt = args.dt
-        while elapsed < duration:
-            eq.solve(dt=dt)
-            elapsed += dt
-            print(f"t={elapsed:0.2f} / {duration}", end="\r")
-            if elapsed >= t_save[flag]:
-                ϕW_array[flag] = ϕW.value
-                ϕB_array[flag] = ϕB.value
-                flag += 1
+            mseW = np.mean((ϕWf_cell - ϕW.value)**2)
+            mseB = np.mean((ϕBf_cell - ϕB.value)**2)
+            gname = f"n{flag:06d}"
+            datadict = {"t": t_save[flag],
+                        "phiW": ϕW.value,
+                        "phiB": ϕB.value,
+                        "mseW": mseW,
+                        "mseB": mseB}
+            dump(datafile, gname, datadict)
+            flag += 1
+    ###############
 
-    mseW = np.mean((ϕWf_cell - ϕW_array[-1])**2)
-    mseB = np.mean((ϕBf_cell - ϕB_array[-1])**2)
+    ### final output ###
+    mseW = np.mean((ϕWf_cell - ϕW.value)**2)
+    mseB = np.mean((ϕBf_cell - ϕB.value)**2)
 
-    print(f"Mean-square error, White: {mseW:0.4f}")
-    print(f"Mean-square error, Black: {mseB:0.4f}")
+    print(f"Final mean-square error:")
+    print(f"White: {mseW:0.4f}")
+    print(f"Black: {mseB:0.4f}")
+    ###############
 
-    with h5py.File(datafile, "a") as d:
-        d.create_dataset("t_array", data=t_save)
-        d.create_dataset("phiW_array", data=ϕW_array)
-        d.create_dataset("phiB_array", data=ϕB_array)
-        d.create_dataset("cell_centers", data=cell_points)
-        d.create_dataset("phiW_2020", data=ϕWf_cell)
-        d.create_dataset("phiB_2020", data=ϕBf_cell)
-        d.create_dataset("mse_white", data=mseW)
-        d.create_dataset("mse_black", data=mseB)
+    # with h5py.File(datafile, "a") as d:
+    #     d.create_dataset("t_array", data=t_save)
+    #     d.create_dataset("phiW_array", data=ϕW_array)
+    #     d.create_dataset("phiB_array", data=ϕB_array)
+    #     d.create_dataset("cell_centers", data=cell_points)
+    #     d.create_dataset("phiW_2020", data=ϕWf_cell)
+    #     d.create_dataset("phiB_2020", data=ϕBf_cell)
+    #     d.create_dataset("mse_white", data=mseW)
+    #     d.create_dataset("mse_black", data=mseB)
+    #     d.create_dataset("corr_length", data=ξ)
+    #     d.create_dataset("corr_length_var", data=ξvar)

@@ -4,7 +4,9 @@ import geopandas as gpd
 import pandas as pd
 from rasterio import features, transform
 import fipy as fp
-
+import h5py
+from scipy import ndimage, optimize
+import freqent.freqentn as fen
 
 def get_boundary(gdf):
     """
@@ -15,6 +17,7 @@ def get_boundary(gdf):
     boundary.crs = gdf.crs
 
     return boundary
+
 
 def make_boundary(data, x_grid, y_grid, crs):
     """
@@ -123,3 +126,106 @@ def make_mesh(data, x_grid, y_grid, crs,
 
     return mesh, simple_boundary, geo_file_contents
 
+
+def get_data(file, year=1990, region="masked", capacity_method="local"):
+    
+    if not (region == "masked") | (region == "county"):
+        raise ValueError("options for region are either 'masked' (full region) or 'county' (county only)")
+
+    ykey = str(year)
+    with h5py.File(file, "r") as d:
+        x_grid = d[ykey]["x_grid"][()]
+        y_grid = d[ykey]["y_grid"][()]
+        white = d[ykey]["white_grid_" + region][()]
+        black = d[ykey]["black_grid_" + region][()]
+
+    capacity = get_capacity(file, method=capacity_method, region=region)
+
+    ϕW = white / (1.1 * capacity)
+    ϕB = black / (1.1 * capacity)
+
+    return ϕW, ϕB, x_grid, y_grid
+
+
+def get_capacity(file, method="local", region="masked"):
+    with h5py.File(file, "r") as d:
+        if method == "uniform":
+            capacity = -1e10
+            for key in d.keys():
+                    capacity = max(capacity, np.nanmax(d[key]["white_grid_" + region][:] + d[key]["black_grid_" + region][:]))
+        elif method == "local":
+            capacity = np.zeros(d["2020"]["x_grid"].shape)
+            for key in d.keys():
+                capacity = np.fmax(capacity, d[key]["white_grid_" + region][:] + d[key]["black_grid_" + region][:])
+        else:
+            raise ValueError("options for capacity are either local or uniform")
+    
+    return capacity
+
+
+def nansmooth(arr, sigma=1):
+    """
+    Apply a gaussian filter to an array with nans.
+
+    Intensity is only shifted between not-nan pixels and is hence conserved.
+    The intensity redistribution with respect to each single point
+    is done by the weights of available pixels according
+    to a gaussian distribution.
+    All nans in arr, stay nans in gauss.
+
+    stolen from: https://stackoverflow.com/a/61481246
+    """
+    nan_msk = np.isnan(arr)
+
+    loss = np.zeros(arr.shape)
+    loss[nan_msk] = 1
+    loss = ndimage.gaussian_filter(
+            loss, sigma=sigma, mode='constant', cval=1)
+
+    gauss = arr.copy()
+    gauss[nan_msk] = 0
+    gauss = ndimage.gaussian_filter(
+            gauss, sigma=sigma, mode='constant', cval=0)
+    gauss[nan_msk] = np.nan
+
+    gauss += loss * arr
+
+    return gauss
+
+
+def expDecay(x, A, ξ, b):
+    return A * np.exp(-x/ξ) + b
+
+
+def get_corrLength(datafile, region="masked",
+                   capacity_method="local",
+                   p0=[1, 10, 0]):
+    # extract data
+    arr = []
+    for year in [1980, 1990, 2000, 2010, 2020]:
+        ϕW, _, x, _ = get_data(datafile, year, region=region,
+                                capacity_method=capacity_method)
+    arr.append(ϕW)
+    arr = np.array(arr)
+
+    # if nans, set to 0
+    arr[np.isnan(arr)] = 0.0
+
+    # calculate correlation function
+    f, _ = fen.csdn(arr, arr, sample_spacing=[x[1, 1] - x[0, 0]])
+    c = np.fft.ifftshift(np.fft.ifftn(np.fft.fftshift(f.mean(axis=0))))
+    # perform azimuthal average
+    cr, r = fen._azimuthal_average(c, mask="circle")
+    # r = sample_spacing
+    popt, pcov = optimize.curve_fit(expDecay, r, cr / cr[0], p0)
+    corr_length = popt[1]
+    corr_length_std = np.sqrt(pcov[1, 1])
+
+    return corr_length, corr_length_std
+
+
+def dump(datafile, group_name, datadict):
+    with h5py.File(datafile, "a") as d:
+        grp = d.create_group(group_name)
+        for key, value in datadict.items():
+            grp.create_dataset(key, data=value)
