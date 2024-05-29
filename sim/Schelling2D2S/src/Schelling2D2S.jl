@@ -50,7 +50,9 @@ Based on Grauwin et al, PNAS 2009
       the system after evolving for n_sweeps
 """
 function run_simulation!(state::Array{Int64, 3},
-                         params::Dict{String, Any})
+                         params::Dict{String, Any},
+                         utilities::Function,
+                         sweep::Int64=0)
     n_sweeps = params["n_sweeps"]
     N = params["grid_size"]
     snapshot = params["snapshot"]

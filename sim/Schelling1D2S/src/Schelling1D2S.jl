@@ -22,41 +22,37 @@ export random_state, move!, gain, glauber_prob, utility, run_simulation!, run_si
                     utilities::Function;
                     sweep::Int64=0)
 
-Run a simulation of the 1D, 2 species Shelling model
-Based on Grauwin et al, PNAS 2009
+Run a simulation of the 1D, 2 species Shelling model starting from a given 
+initial condition
 
 ## Inputs
 - state : Array
     - Nx2 array of initial state
 - params : Dict
+    - params["dt"] : float
+        - size of time-step
     - params["n_sweeps"] : int
-        - Number of sweeps. 1 sweep is equal to sum(state) moves
-    - params["density_preferred"]: float
-        - preferred density, used to calculate the utility of the agents
+        - total number of sweeps to perform
     - params["capacity"] : int
-        - maximum number of occupants allowed at each lattice site
-    - params["m"] : float
-        - utility of the rho = 1 state. m in [0, 1]
-    - params["temperature"] : float
-        - temperature used in the Glauber update rule
-    - params["alpha"] : float in [0, 1]
-        - float governing the weight of individual vs system fitness for updating probabilities.
-        - alpha = 0 only considers individual fitness.
-          alpha = 1 only considers system fitness
-    - params["delta"] : float in [-1, 1]
-        - float governing the extent to which each species influences each other
-    - params["moveType"] : string
-        - either "random" or "local", sets whether moving can
-          happen anywhere ("random") or only to nearest neighbors ("local")
+        - total number of agents allowed at each lattice site
+    - params["grid_size"] : int
+        - number of lattice sites
     - params["fill"] : 2-element array
         - what fraction of available sites are filled with agents of each type.
-          Must sum to less than 1
+        - Must sum to less than 1
+    - params["alpha"] : float in [0, 1] 
+        - magnitude of altruism
+        - NOT IMPLEMENTED
+    - params["temperature"] : float in [0, ∞)
+        - magnitude of temperature
+    - params["gamma"] : float in [0, ∞)
+        - magnitude of gradient penalty
     - params["snapshot"] : int
-        - how many sweeps between saved outputs
+        - number of sweeps between saving
     - params["savepath"] : string
-        - path to folder where to save output
-    - params["filename"]
-        - name of file to save data into
+        - path of where to save output
+    - params["filename"] : string
+        - name of data file
 - utilities : Function
     - πA, πB = utilities(local_state::Vector{Int64}, capacity::Int64)
     - returns the utilities of both groups.
@@ -101,12 +97,8 @@ function run_simulation!(state::Matrix{Int64},
                    alpha, temp,
                    utilities)
         
-        # snapshot = -1 means only
-        # save initial and final
-        if snapshot > 0
-            if ii % snapshot == 0
-                save(state, params, sweep=ii)
-            end
+        if ii % snapshot == 0
+            save(state, params, sweep=ii)
         end
     end
     
@@ -119,9 +111,47 @@ end
 
 """
     run_simulation(params::Dict{String, Any},
-                        utilities::Function)
+                   utilities::Function)
 
-starts from a random initial state
+Runs simulation starting from a random initial state
+
+## Inputs
+- params : Dict
+    - params["dt"] : float
+        - size of time-step
+    - params["n_sweeps"] : int
+        - total number of sweeps to perform
+    - params["capacity"] : int
+        - total number of agents allowed at each lattice site
+    - params["grid_size"] : int
+        - number of lattice sites
+    - params["fill"] : 2-element array
+        - what fraction of available sites are filled with agents of each type.
+        - Must sum to less than 1
+    - params["alpha"] : float in [0, 1] 
+        - magnitude of altruism
+        - NOT IMPLEMENTED
+    - params["temperature"] : float in [0, ∞)
+        - magnitude of temperature
+    - params["gamma"] : float in [0, ∞)
+        - magnitude of gradient penalty
+    - params["snapshot"] : int
+        - number of sweeps between saving
+    - params["savepath"] : string
+        - path of where to save output
+    - params["filename"] : string
+        - name of data file
+- utilities : Function
+    - πA, πB = utilities(local_state::Vector{Int64}, capacity::Int64)
+    - returns the utilities of both groups.
+        Takes the local state (i.e the numbers of individuals at a single site)
+        and carrying capacity.
+
+## Outputs
+- state : array
+    - NxMx2 array of integers that gives state of
+      the system after evolving for n_sweeps
+
 """
 function run_simulation(params::Dict{String, Any},
                         utilities::Function)
@@ -158,7 +188,21 @@ end
 """
     random_state(params::Dict{String, Any})
 
-TBW
+Creates a random state
+
+## Inputs
+- params : Dict
+    - params["grid_size"] : int
+        - number of lattice sites
+    - params["capacity"] : int
+        - maximum number of agents allowed at each lattice site
+    - params["fill"] : 2-element array
+        - what fraction of available sites are filled with agents of each type.
+        - Must sum to less than 1
+
+## Outputs
+- state : array
+    - NxMx2 array of integers that gives a random state of the system
 """
 function random_state(params::Dict{String, Any})
     # unpack parameters
@@ -187,7 +231,7 @@ end
                     alpha::Float64, temp::Float64,
                     utilities::Function)
 
-TBW
+Runs a single sweep of
 """
 function run_sweep!(state::Matrix{Int64},
                     n_steps::Int64, dt::Float64,
