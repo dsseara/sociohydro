@@ -116,8 +116,8 @@ function compute_force(ϕA::Array{T, 1}, ϕB::Array{T, 1},
 
     ∇πA = similar(ϕA)
     ∇πB = similar(ϕB)
-    ∇∂U_∂ϕA = similar(ϕA)
-    ∇∂U_∂ϕB = similar(ϕB)
+    # ∇∂U_∂ϕA = similar(ϕA)
+    # ∇∂U_∂ϕB = similar(ϕB)
     ∇fitnessA = similar(ϕA)
     ∇fitnessB = similar(ϕB)
 
