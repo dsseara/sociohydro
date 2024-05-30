@@ -1,4 +1,6 @@
 import os
+import json
+from glob import glob
 import fipy as fp
 import numpy as np
 import argparse
@@ -13,7 +15,7 @@ if __name__ == "__main__":
     parser.add_argument("-nt", type=int, default=100,
                         help="number of time points to save")
     parser.add_argument("-dt", type=float, default=1e-3,
-                        help="size of time step for linear stepper")
+                        help="time step")
     parser.add_argument("-nx", type=int, default=40,
                         help="number of cells in x")
     parser.add_argument("-dx", type=float, default=0.25,
@@ -22,8 +24,6 @@ if __name__ == "__main__":
                         help="system size in y")
     parser.add_argument("-dy", type=float, default=0.25,
                         help="cell size in y")
-    parser.add_argument("-dt", type=float, default=1e-3,
-                        help="time step")
     parser.add_argument("-k1", type=float, default=1.0,
                         help="self-utility of group 1")
     parser.add_argument("-k2", type=float, default=1.0,
@@ -75,6 +75,7 @@ if __name__ == "__main__":
     κ2 = args.k2
     κ = np.array([[κ1, κp - κm],
                   [κp + κm, κ2]])
+    nu = args.nu
     Γ1 = args.gamma  # surface tension of 0
     Γ2 = args.gamma  # surface tension of 1
     temp = args.temp # diffusion constant
@@ -111,7 +112,7 @@ if __name__ == "__main__":
     dμ1dϕ1 = -κ[0, 0] + temp * (1 - ϕ2) / (ϕ1 * (1 - ϕ1 - ϕ2))
     
     M2 = ϕ2 * (1 - ϕ1 - ϕ2)
-    π2 = κ[1, 0] * ϕ1 + κ[1, 1] * ϕ2
+    π2 = κ[1, 0] * ϕ1 + κ[1, 1] * ϕ2 * (1 - nu * ϕ2)
     μ2 = -π2 + temp * (np.log(ϕ2) - np.log(1 - ϕ1 - ϕ2))
     dμ2dϕ2 = -κ[1, 1] + temp * (1 - ϕ1) / (ϕ2 * (1 - ϕ1 - ϕ2))
     
@@ -138,6 +139,12 @@ if __name__ == "__main__":
     elapsed = 0
     flag = 0
     
+    # save things common to all time points
+    gname = "common"
+    datadict = {"x": mesh.cellCenters.value[0],
+                "y": mesh.cellCenters.value[1]}
+    dump(datafile, gname, datadict)
+
     # save initial condition
     gname = f"n{flag:06d}"
     datadict = {"t": t_save[flag],
