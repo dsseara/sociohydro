@@ -26,8 +26,6 @@ class SociohydroInfer2D():
             raise ValueError(f"diff_method needs to be in {diff_method_opts}")
         
         self.diff_method = diff_method
-        
-        self.features = self.calc_features()
 
     def differentiate(self, x, y, order, periodic, axis):
         if self.diff_method == "savgol":
@@ -134,10 +132,12 @@ class SociohydroInfer2D():
 
         return features
     
-    def fit(self, train_pct):
+    def fit(self, train_pct, regressor="linear", alpha=0.1):
+        features = self.calc_features()
+
         train = np.random.choice(len(self.t), int(len(self.t) * train_pct),
                                  replace=False)
-        test = [i for i in np.arange(len(self.t)) if i not in train]
+        test = np.array([i for i in np.arange(len(self.t)) if i not in train])
 
         t_train = self.t[train]
         t_test = self.t[test]
@@ -146,37 +146,61 @@ class SociohydroInfer2D():
 
         # ∂ϕA/∂t
         At_dt = ABt_dt[..., 0]
-        At_dt_train = np.reshape(At_dt[..., train], len(self.x) * len(self.y) * len(t_train))
-        At_dt_test = np.reshape(At_dt[..., test], len(self.x) * len(self.y) * len(t_test))
+        
+        At_dt_train = np.reshape(At_dt[..., train], np.prod(At_dt[..., train].shape))
+        At_dt_train = At_dt_train[~np.isnan(At_dt_train)]
+
+        At_dt_test = np.reshape(At_dt[..., test], np.prod(At_dt[..., test].shape))
+        At_dt_test = At_dt_test[~np.isnan(At_dt_test)]
         # features of A
-        fA = self.features[..., 0, :]
-        fA_train = np.reshape(fA[..., train, :], [len(self.x) * len(self.y) * len(t_train), fA.shape[-1]])
-        fA_test = np.reshape(fA[..., test, :], [len(self.x) * len(self.y) * len(t_test), fA.shape[-1]])
+        fA = features[..., 0, :-2]
+        
+        fA_train = np.reshape(fA[..., train, :], [np.prod(At_dt[..., train].shape), fA.shape[-1]])
+        fA_train = fA_train[~np.isnan(fA_train[:, 0]), :]
+        
+        fA_test = np.reshape(fA[..., test, :], [np.prod(At_dt[..., test].shape), fA.shape[-1]])
+        fA_test = fA_test[~np.isnan(fA_test[:, 0]), :]
 
         # ∂ϕB/∂t
         Bt_dt = ABt_dt[..., 1]
-        Bt_dt_train = np.reshape(Bt_dt[..., train], len(self.x) * len(self.y) * len(t_train))
-        Bt_dt_test = np.reshape(Bt_dt[..., test], len(self.x) * len(self.y) * len(t_test))
+        
+        Bt_dt_train = np.reshape(Bt_dt[..., train], np.prod(Bt_dt[..., train].shape))
+        Bt_dt_train = Bt_dt_train[~np.isnan(Bt_dt_train)]
+        
+        Bt_dt_test = np.reshape(Bt_dt[..., test], np.prod(Bt_dt[..., test].shape))
+        Bt_dt_test = Bt_dt_test[~np.isnan(Bt_dt_test)]
         # features of B
-        fB = self.features[..., 1, :]
-        fB_train = np.reshape(fB[..., train, :], [len(self.x) * len(self.y) * len(t_train), fB.shape[-1]])
-        fB_test = np.reshape(fB[..., test, :], [len(self.x) * len(self.y) * len(t_test), fB.shape[-1]])
+        fB = features[..., 1, :-2]
+        
+        fB_train = np.reshape(fB[..., train, :], [np.prod(Bt_dt[..., train].shape), fB.shape[-1]])
+        fB_train = fB_train[~np.isnan(fB_train[:, 0]), :]
+        
+        fB_test = np.reshape(fB[..., test, :], [np.prod(Bt_dt[..., test].shape), fB.shape[-1]])
+        fB_test = fB_test[~np.isnan(fB_test[:, 0]), :]
 
-        regrA = lm.LinearRegression()
-        regrB = lm.LinearRegression()
-        # regressor = lm.ElasticNet(alpha=0.1, l1_ratio=0.5)
-        # regressor = lm.SGDRegressor(loss="squared_error")
-        # regressor = lm.Lasso(alpha=1e-3)
-
+        if regressor.lower() == "linear":
+            regrA = lm.LinearRegression()
+            regrB = lm.LinearRegression()
+        elif regressor.lower() == "elasticnet":
+            regrA = lm.ElasticNet(alpha=alpha, l1_ratio=0.5)
+            regrB = lm.ElasticNet(alpha=alpha, l1_ratio=0.5)
+        elif regressor.lower() == "sgd":
+            regrA = lm.SGDRegressor(loss="squared_error")
+            regrB = lm.SGDRegressor(loss="squared_error")
+        elif regressor.lower() == "lasso":
+            regrA = lm.Lasso(alpha=alpha)
+            regrB = lm.Lasso(alpha=alpha)
+        else:
+            raise ValueError("Regressor must be one of ['linear', 'elastic', 'sgd', 'lasso']. Currently: " + regressor)
+        
         # perform fit
         fitA = regrA.fit(fA_train, At_dt_train)
         fitB = regrB.fit(fB_train, Bt_dt_train)
-        # extract coefficients
-        coeffsA = fitA.coef_
-        coeffsB = fitB.coef_
-        # 
+
+        # pearson correlation coefficient
         pearsonr_A = stats.pearsonr(At_dt_test, fitA.predict(fA_test)).statistic
         pearsonr_B = stats.pearsonr(Bt_dt_test, fitB.predict(fB_test)).statistic
         
 
-        return fitA, fitB, pearsonr_A, pearsonr_B
+        return fitA, fitB, test, train, pearsonr_A, pearsonr_B
+
