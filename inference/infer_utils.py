@@ -1,6 +1,6 @@
 from scipy import interpolate, signal, ndimage
 import numpy as np
-
+import h5py
 
 def spline_deriv(x, y, polyorder=3, order=1, axis=0, smoothing=0):
     tck = interpolate.splrep(x, y, k=polyorder, s=smoothing)
