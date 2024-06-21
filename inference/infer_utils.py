@@ -45,3 +45,26 @@ def gauss_deriv(x, y, sigma=1, order=1, axis=0, periodic=False):
         mode = "reflect"
 
     return ndimage.gaussian_filter(y, sigma=sigma, order=order, axes=(axis,), mode=mode)
+
+
+def get_data(file, year=1990, region="all"):
+    ykey = str(year)
+    with h5py.File(file, "r") as d:
+        x_grid = d[ykey]["x_grid"][()]
+        y_grid = d[ykey]["y_grid"][()]
+        capacity = np.zeros(x_grid.shape)
+        if region == "county":
+            white = d[ykey]["white_grid_county"][()]
+            black = d[ykey]["black_grid_county"][()]
+            for key in d.keys():
+                capacity = np.fmax(capacity, d[key]["white_grid_county"][:] + d[key]["black_grid_county"][:])
+        elif region == "all":
+            white = d[ykey]["white_grid_masked"][()]
+            black = d[ykey]["black_grid_masked"][()]
+            for key in d.keys():
+                capacity = np.fmax(capacity, d[key]["white_grid_masked"][:] + d[key]["black_grid_masked"][:])
+
+    ϕW = white / (1.1 * capacity)
+    ϕB = black / (1.1 * capacity)
+
+    return ϕW, ϕB, x_grid, y_grid
