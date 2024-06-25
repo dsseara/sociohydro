@@ -5,7 +5,7 @@ import fipy as fp
 import numpy as np
 import argparse
 import h5py
-from scipy import interpolate
+from scipy import interpolate, ndimage
 
 from fvm_utils import *
 
@@ -14,6 +14,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-datafile", type=str, required=True,
                         help="path to hdf5 file with interpolated data for initial condition")
+    parser.add_argument("-sigma", type=float, default=1.0,
+                        help="size of gaussian used to smooth data")
     parser.add_argument("-duration", type=float, default=100.0,
                         help="total duration of simulation")
     parser.add_argument("-nt", type=int, default=100,
@@ -100,6 +102,12 @@ if __name__ == "__main__":
                               year=1990,
                               region="masked",
                               capacity_method=args.capacityType)
+    Wnans = np.isnan(ϕW0)
+    Bnans = np.isnan(ϕB0)
+    ϕW0 = ndimage.gaussian_filter(np.nan_to_num(ϕW0), args.sigma)
+    ϕW0[Wnans] = np.nan
+    ϕB0 = ndimage.gaussian_filter(np.nan_to_num(ϕB0), args.sigma)
+    ϕB0[Bnans] = np.nan
     
     # measure in units of kilometers
     x /= 1000.0
@@ -110,6 +118,12 @@ if __name__ == "__main__":
                               year=2020,
                               region="masked",
                               capacity_method=args.capacityType)
+    Wnans = np.isnan(ϕWf)
+    Bnans = np.isnan(ϕBf)
+    ϕWf = ndimage.gaussian_filter(np.nan_to_num(ϕWf), args.sigma)
+    ϕWf[Wnans] = np.nan
+    ϕBf = ndimage.gaussian_filter(np.nan_to_num(ϕBf), args.sigma)
+    ϕBf[Bnans] = np.nan
     
     # get correlation length of white population
     ξ, ξvar = get_corrLength(args.datafile, region="masked",
