@@ -17,9 +17,10 @@ def spectral_deriv(x, y, order=1, axis=0):
 def savgol_deriv(x, y, window_length=3, polyorder=3,
                  order=1, axis=0, periodic=False,
                  smooth=False, smooth_polyorder=3):
-    if np.any(np.isnan(y)):
-        original_nans = np.isnan(y)
-        y = np.nan_to_num(y)
+    # if np.any(np.isnan(y)):
+    #     original_nans = np.isnan(y)
+    #     y = np.nan_to_num(y)
+    nanmask = np.isnan(y)
 
     if periodic:
         mode="wrap"
@@ -27,14 +28,16 @@ def savgol_deriv(x, y, window_length=3, polyorder=3,
         mode="interp"
     dx = x[1] - x[0]
 
-    deriv = signal.savgol_filter(y, window_length, polyorder,
+    deriv = signal.savgol_filter(np.ma.array(y, mask=nanmask),
+                                 window_length, polyorder,
                                  deriv=order, axis=axis, mode=mode,
                                  delta=dx)
     if smooth:
-        deriv = signal.savgol_filter(deriv, window_length, smooth_polyorder,
+        deriv = signal.savgol_filter(np.ma.array(deriv, mask=nanmask),
+                                     window_length, smooth_polyorder,
                                      deriv=0, axis=axis, mode=mode)
 
-    deriv[original_nans] = np.nan
+    # deriv[original_nans] = np.nan
     return deriv
 
 
