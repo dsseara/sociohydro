@@ -230,12 +230,12 @@ class SociohydroInfer2D():
             # append data to everything
             dAdt_train.append(At_dt_train[~np.isnan(At_dt_train)])
             dAdt_test.append(At_dt_test[~np.isnan(At_dt_test)])
-            featA_train.append(fA_train[~np.isnan(fA_train[:, 0]), :])
-            featA_test.append(fA_test[~np.isnan(fA_test[:, 0]), :])
+            featA_train.append(fA_train[np.all(~np.isnan(fA_train), axis=1), :])
+            featA_test.append(fA_test[np.all(~np.isnan(fA_test), axis=1), :])
             dBdt_train.append(Bt_dt_train[~np.isnan(Bt_dt_train)])
             dBdt_test.append(Bt_dt_test[~np.isnan(Bt_dt_test)])
-            featB_train.append(fB_train[~np.isnan(fB_train[:, 0]), :])
-            featB_test.append(fB_test[~np.isnan(fB_test[:, 0]), :])
+            featB_train.append(fB_train[np.all(~np.isnan(fB_train), axis=1), :])
+            featB_test.append(fB_test[np.all(~np.isnan(fB_test), axis=1), :])
         
         dAdt = {"train": np.concatenate(dAdt_train),
                 "test" : np.concatenate(dAdt_test)}
