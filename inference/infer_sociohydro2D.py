@@ -240,16 +240,17 @@ class SociohydroInfer2D():
                                   fB.shape[-1]])
 
             # append data to everything
-            nanmask = np.all(~np.isnan(fA_train), axis=1)
+            mask_train = np.all(~np.isnan(fA_train), axis=1)
+            mask_test = np.all(~np.isnan(fA_test), axis=1)
             
-            dAdt_train.append(At_dt_train[nanmask])
-            dAdt_test.append(At_dt_test[nanmask])
-            featA_train.append(fA_train[nanmask, :])
-            featA_test.append(fA_test[nanmask, :])
-            dBdt_train.append(Bt_dt_train[nanmask])
-            dBdt_test.append(Bt_dt_test[nanmask])
-            featB_train.append(fB_train[nanmask, :])
-            featB_test.append(fB_test[nanmask, :])
+            dAdt_train.append(At_dt_train[mask_train])
+            dAdt_test.append(At_dt_test[mask_test])
+            featA_train.append(fA_train[mask_train, :])
+            featA_test.append(fA_test[mask_test, :])
+            dBdt_train.append(Bt_dt_train[mask_train])
+            dBdt_test.append(Bt_dt_test[mask_test])
+            featB_train.append(fB_train[mask_train, :])
+            featB_test.append(fB_test[mask_test, :])
         
         dAdt = {"train": np.concatenate(dAdt_train),
                 "test" : np.concatenate(dAdt_test)}
