@@ -205,52 +205,51 @@ class SociohydroInfer2D():
         featB_train = []
         featB_test = []
         
+        # loop over all datasets
         for ABt, x, y, t in zip(self.ABts, self.xs, self.ys, self.ts):
             features = self.calc_features(ABt, x, y)
+            nfeat = features.shape[-1]
             ABt_dt   = self.differentiate(t, ABt, order=1, periodic=False, axis=-2)   # ∂/∂t
 
             # ∂ϕA/∂t
             At_dt = ABt_dt[..., 0]
-            At_dt_train = np.reshape(At_dt[..., train],
-                                     np.prod(At_dt[..., train].shape))
-            At_dt_test = np.reshape(At_dt[..., test],
-                                    np.prod(At_dt[..., test].shape))
+            At_dt_notnan = np.all(~np.isnan(At_dt), axis=-1)
             # features of A
             fA = features[..., 0, :]
-            fA_train = np.reshape(fA[..., train, :],
-                                  [np.prod(At_dt[..., train].shape),
-                                   fA.shape[-1]])
-            fA_test = np.reshape(fA[..., test, :],
-                                  [np.prod(At_dt[..., test].shape),
-                                   fA.shape[-1]])
-
+            fA_notnan = np.all(~np.isnan(fA), axis=(-1, -2))
             # ∂ϕB/∂t
             Bt_dt = ABt_dt[..., 1]
-            Bt_dt_train = np.reshape(Bt_dt[..., train],
-                                     np.prod(Bt_dt[..., train].shape))
-            Bt_dt_test = np.reshape(Bt_dt[..., test],
-                                    np.prod(Bt_dt[..., test].shape))
+            Bt_dt_notnan = np.all(~np.isnan(Bt_dt), axis=-1)
             # features of B
             fB = features[..., 1, :]
-            fB_train = np.reshape(fB[..., train, :],
-                                  [np.prod(Bt_dt[..., train].shape),
-                                   fB.shape[-1]])
-            fB_test = np.reshape(fB[..., test, :],
-                                 [np.prod(Bt_dt[..., test].shape),
-                                  fB.shape[-1]])
+            fB_notnan = np.all(~np.isnan(fB), axis=(-1, -2))
+
+            notnan = np.logical_and(np.logical_and(At_dt_notnan, fA_notnan),
+                                    np.logical_and(Bt_dt_notnan, fB_notnan))
+
+            At_dt_train = At_dt[..., train][notnan].ravel()
+            At_dt_test  = At_dt[...,  test][notnan].ravel()
+            fA_train = np.reshape(fA[..., train, :][notnan], [len(At_dt_train), nfeat])
+            fA_test  = np.reshape(fA[..., test,  :][notnan], [len(At_dt_test),  nfeat])
+            Bt_dt_train = Bt_dt[..., train][notnan].ravel()
+            Bt_dt_test  = Bt_dt[...,  test][notnan].ravel()
+            fB_train = np.reshape(fB[..., train, :][notnan], [len(Bt_dt_train), nfeat])
+            fB_test  = np.reshape(fB[...,  test, :][notnan], [len(Bt_dt_test),  nfeat])
 
             # append data to everything
-            mask_train = np.all(~np.isnan(fA_train), axis=1)
-            mask_test = np.all(~np.isnan(fA_test), axis=1)
+            # nanmask = np.logical_and(np.logical_and(np.all(~np.isnan(At_dt), axis=-1), np.all(~np.isnan(fA), axis=(-1, -2))),
+            #                          np.logical_and(np.all(~np.isnan(Bt_dt), axis=-1), np.all(~np.isnan(fB), axis=(-1, -2))))
+            # mask_train = np.all(~np.isnan(fA_train), axis=1)
+            # mask_test = np.all(~np.isnan(fA_test), axis=1)
             
-            dAdt_train.append(At_dt_train[mask_train])
-            dAdt_test.append(At_dt_test[mask_test])
-            featA_train.append(fA_train[mask_train, :])
-            featA_test.append(fA_test[mask_test, :])
-            dBdt_train.append(Bt_dt_train[mask_train])
-            dBdt_test.append(Bt_dt_test[mask_test])
-            featB_train.append(fB_train[mask_train, :])
-            featB_test.append(fB_test[mask_test, :])
+            dAdt_train.append(At_dt_train)
+            dAdt_test.append(At_dt_test)
+            featA_train.append(fA_train)
+            featA_test.append(fA_test)
+            dBdt_train.append(Bt_dt_train)
+            dBdt_test.append(Bt_dt_test)
+            featB_train.append(fB_train)
+            featB_test.append(fB_test)
         
         dAdt = {"train": np.concatenate(dAdt_train),
                 "test" : np.concatenate(dAdt_test)}
