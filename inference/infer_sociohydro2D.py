@@ -211,31 +211,45 @@ class SociohydroInfer2D():
 
             # ∂ϕA/∂t
             At_dt = ABt_dt[..., 0]
-            At_dt_train = np.reshape(At_dt[..., train], np.prod(At_dt[..., train].shape))
-            At_dt_test = np.reshape(At_dt[..., test], np.prod(At_dt[..., test].shape))
+            At_dt_train = np.reshape(At_dt[..., train],
+                                     np.prod(At_dt[..., train].shape))
+            At_dt_test = np.reshape(At_dt[..., test],
+                                    np.prod(At_dt[..., test].shape))
             # features of A
             fA = features[..., 0, :]
-            fA_train = np.reshape(fA[..., train, :], [np.prod(At_dt[..., train].shape), fA.shape[-1]])
-            fA_test = np.reshape(fA[..., test, :], [np.prod(At_dt[..., test].shape), fA.shape[-1]])
+            fA_train = np.reshape(fA[..., train, :],
+                                  [np.prod(At_dt[..., train].shape),
+                                   fA.shape[-1]])
+            fA_test = np.reshape(fA[..., test, :],
+                                  [np.prod(At_dt[..., test].shape),
+                                   fA.shape[-1]])
 
             # ∂ϕB/∂t
             Bt_dt = ABt_dt[..., 1]
-            Bt_dt_train = np.reshape(Bt_dt[..., train], np.prod(Bt_dt[..., train].shape))
-            Bt_dt_test = np.reshape(Bt_dt[..., test], np.prod(Bt_dt[..., test].shape))
+            Bt_dt_train = np.reshape(Bt_dt[..., train],
+                                     np.prod(Bt_dt[..., train].shape))
+            Bt_dt_test = np.reshape(Bt_dt[..., test],
+                                    np.prod(Bt_dt[..., test].shape))
             # features of B
             fB = features[..., 1, :]
-            fB_train = np.reshape(fB[..., train, :], [np.prod(Bt_dt[..., train].shape), fB.shape[-1]])
-            fB_test = np.reshape(fB[..., test, :], [np.prod(Bt_dt[..., test].shape), fB.shape[-1]])
+            fB_train = np.reshape(fB[..., train, :],
+                                  [np.prod(Bt_dt[..., train].shape),
+                                   fB.shape[-1]])
+            fB_test = np.reshape(fB[..., test, :],
+                                 [np.prod(Bt_dt[..., test].shape),
+                                  fB.shape[-1]])
 
             # append data to everything
-            dAdt_train.append(At_dt_train[~np.isnan(At_dt_train)])
-            dAdt_test.append(At_dt_test[~np.isnan(At_dt_test)])
-            featA_train.append(fA_train[np.all(~np.isnan(fA_train), axis=1), :])
-            featA_test.append(fA_test[np.all(~np.isnan(fA_test), axis=1), :])
-            dBdt_train.append(Bt_dt_train[~np.isnan(Bt_dt_train)])
-            dBdt_test.append(Bt_dt_test[~np.isnan(Bt_dt_test)])
-            featB_train.append(fB_train[np.all(~np.isnan(fB_train), axis=1), :])
-            featB_test.append(fB_test[np.all(~np.isnan(fB_test), axis=1), :])
+            nanmask = np.all(~np.isnan(fA_train), axis=1)
+            
+            dAdt_train.append(At_dt_train[nanmask])
+            dAdt_test.append(At_dt_test[nanmask])
+            featA_train.append(fA_train[nanmask, :])
+            featA_test.append(fA_test[nanmask, :])
+            dBdt_train.append(Bt_dt_train[nanmask])
+            dBdt_test.append(Bt_dt_test[nanmask])
+            featB_train.append(fB_train[nanmask, :])
+            featB_test.append(fB_test[nanmask, :])
         
         dAdt = {"train": np.concatenate(dAdt_train),
                 "test" : np.concatenate(dAdt_test)}
