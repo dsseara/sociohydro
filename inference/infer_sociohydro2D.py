@@ -71,10 +71,28 @@ if __name__=="__main__":
     parser.add_argument('-savefolder', type=str, default='.',
                         help='where to save output')
 
+    args = parser.parse_args()
+
+    ### set up save environment ###
+    paramfile = os.path.join(args.savefolder, "inference_params.json")
+    if not os.path.exists(args.savefolder):
+        os.makedirs(args.savefolder)
+    else:
+        files = glob(os.path.join(args.savefolder, "*"))
+        for file in files:
+            try:
+                os.remove(file)
+            except Exception as e:
+                print(f"could not delete {file}. Reason: {e}")
+    ###############
+
+    ### save params ###
+    with open(paramfile, "w") as p:
+        p.write(json.dumps(vars(args), indent=4))
+    ###############
+
     feat_names = [r"$T$", r"$k_{ii}$", r"$k_{ij}$", r"$\Gamma$",
               r"$\nu_{iii}$", r"$\nu_{iij}$", r"$\nu_{ijj}$"]
-
-    args = parser.parse_args()
 
     ϕWs = []
     ϕBs = []
@@ -138,6 +156,7 @@ if __name__=="__main__":
     coeffs = np.array([])
     coeff_names = np.array([])
     coeff_group = np.array([])
+    coeff_trial = np.array([])
     pWs = []
     pBs = []
 
@@ -150,6 +169,7 @@ if __name__=="__main__":
         coeff_names = np.append(coeff_names, names*2)
         coeff_group = np.append(coeff_group, ["W"]*len(fitW.coef_))
         coeff_group = np.append(coeff_group, ["B"]*len(fitW.coef_))
+        coeff_group = np.append()
         pWs.append(pW)
         pBs.append(pB)
     
