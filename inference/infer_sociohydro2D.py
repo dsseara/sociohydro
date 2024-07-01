@@ -188,13 +188,13 @@ if __name__=="__main__":
 
     today = datetime.today().strftime("%Y-%m-%d")
 
-    coef_file = os.path.join(args.savefolder, today + "_coefs_trainPct{args.train_pct}_sigma{args.sigma}")
+    coef_file = os.path.join(args.savefolder, today + f"_coefs")
     coef_df.to_csv(coef_file + ".csv", index=False)
     coef_df.groupby(["name", "demo"]).mean().reset_index().to_csv(coef_file + "_mean.csv",
                                                                   index=False)
     
-    pearson_file = os.path.join(args.savefolder, today + "_pearson_trainPct{args.train_pct}_sigma{args.sigma}")
+    pearson_file = os.path.join(args.savefolder, today + f"_pearson")
     pearson_df.to_csv(pearson_file + ".csv", index=False)
 
-    plot_file = os.path.join(args.savefolder, today + "_coefs_trainPct{args.train_pct}_sigma{args.sigma}")
+    plot_file = os.path.join(args.savefolder, today + f"_coefs")
     make_coef_plot(coef_df, [pWs, pBs], plot_file + ".pdf")
