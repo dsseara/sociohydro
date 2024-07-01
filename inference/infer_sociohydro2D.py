@@ -9,8 +9,8 @@ from tqdm import tqdm
 import pandas as pd
 from datetime import datetime
 import argparse
-from inference.sociohydro2DInferer import *
-from inference.infer_utils import *
+from sociohydro2DInferer import *
+from infer_utils import *
 
 
 def make_coef_plot(coef_df, pearson_coefs, savename):
