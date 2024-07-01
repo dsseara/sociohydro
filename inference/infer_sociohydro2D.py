@@ -156,7 +156,7 @@ if __name__=="__main__":
     coeffs = np.array([])
     coeff_names = np.array([])
     coeff_group = np.array([])
-    coeff_trial = np.array([])
+    # coeff_trial = np.array([])
     pWs = []
     pBs = []
 
@@ -166,23 +166,35 @@ if __name__=="__main__":
         fitW, fitB, _, _, _, _, pW, pB = inferer.fit(train_pct)
         coeffs = np.append(coeffs, list(fitW.coef_))
         coeffs = np.append(coeffs, list(fitB.coef_))
-        coeff_names = np.append(coeff_names, names*2)
-        coeff_group = np.append(coeff_group, ["W"]*len(fitW.coef_))
-        coeff_group = np.append(coeff_group, ["B"]*len(fitW.coef_))
-        coeff_group = np.append()
+        coeff_names = np.append(coeff_names, names * 2)
+        coeff_group = np.append(coeff_group, ["W"] * len(fitW.coef_))
+        coeff_group = np.append(coeff_group, ["B"] * len(fitW.coef_))
+        # coeff_group = np.append(coeff_trial, [trial] * len(names) * 2)
         pWs.append(pW)
         pBs.append(pB)
     
-    coef_df = pd.DataFrame({"val": coeffs,
-                            "name": coeff_names,
-                            "demo": coeff_group})
+    coef_df = pd.DataFrame({
+        "val": coeffs,
+        "name": coeff_names,
+        "demo": coeff_group,
+        "trial": np.repeat(np.arange(ntrials), len(names)*2)
+    })
+
+    pearson_df = pd.DataFrame({
+        "pearsonW": pWs,
+        "pearsonB": pBs,
+        "trial": np.arange(ntrials)
+    })
 
     today = datetime.today().strftime("%Y-%m-%d")
+
     coef_file = os.path.join(args.savefolder, today + "_coefs_trainPct{args.train_pct}_sigma{args.sigma}")
-    
     coef_df.to_csv(coef_file + ".csv", index=False)
     coef_df.groupby(["name", "demo"]).mean().reset_index().to_csv(coef_file + "_mean.csv",
                                                                   index=False)
     
+    pearson_file = os.path.join(args.savefolder, today + "_pearson_trainPct{args.train_pct}_sigma{args.sigma}")
+    pearson_df.to_csv(pearson_file + ".csv", index=False)
+
     plot_file = os.path.join(args.savefolder, today + "_coefs_trainPct{args.train_pct}_sigma{args.sigma}")
     make_coef_plot(coef_df, [pWs, pBs], plot_file + ".pdf")
