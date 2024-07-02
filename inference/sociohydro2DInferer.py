@@ -271,17 +271,21 @@ class SociohydroInfer2D():
             raise ValueError("Regressor must be one of ['linear', 'elastic', 'sgd', 'lasso']. Currently: " + regressor)
         
         if regressor.lower() == "linear":
-            regs = [lm.LinearRegression()] * 2
+            regA = lm.LinearRegression()
+            regB = lm.LinearRegression()
         elif regressor.lower() == "elasticnet":
-            regs = [lm.ElasticNet(alpha=alpha, l1_ratio=0.5)] * 2
+            regA = lm.ElasticNet(alpha=alpha, l1_ratio=0.5)
+            regB = lm.ElasticNet(alpha=alpha, l1_ratio=0.5)
         elif regressor.lower() == "sgd":
-            regs = [lm.SGDRegressor(loss="squared_error")] * 2
+            regA = lm.SGDRegressor(loss="squared_error")
+            regB = lm.SGDRegressor(loss="squared_error")
         elif regressor.lower() == "lasso":
-            regs = [lm.Lasso(alpha=alpha)] * 2
+            regA = lm.Lasso(alpha=alpha)
+            regB = lm.Lasso(alpha=alpha)
 
         # perform fit
-        fitA = regs[0].fit(featA["train"], dAdt["train"])
-        fitB = regs[1].fit(featB["train"], dBdt["train"])
+        fitA = regA.fit(featA["train"], dAdt["train"])
+        fitB = regB.fit(featB["train"], dBdt["train"])
 
         # pearson correlation coefficient
         pearsonr_A = stats.pearsonr(dAdt["test"], fitA.predict(featA["test"])).statistic
