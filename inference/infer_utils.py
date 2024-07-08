@@ -1,6 +1,7 @@
 from scipy import interpolate, signal, ndimage
 import numpy as np
 import h5py
+import string
 
 def spline_deriv(x, y, polyorder=3, order=1, axis=0, smoothing=0):
     tck = interpolate.splrep(x, y, k=polyorder, s=smoothing)
@@ -105,12 +106,27 @@ def d4(Nx, dx):
     laplap = laplap_diag + laplap_utri + laplap_utri.T
     return laplap / dx**4
 
-def fd_deriv(x, y, order=1):
+def fd_deriv(x, y, order=1, axis=0):
+    ndims = len(y.shape)
+    # index input array
+    input_inds = list(string.ascii_lowercase[:ndims])
+    # index derivative matrix, assume input array never gets to z
+    deriv_inds = ['z', input_inds[axis]]
+    # index output array, replacing axis over which derivative is taken with z
+    output_inds = list(string.ascii_lowercase[:ndims])
+    output_inds[axis] = 'z'
+    # create the string for einstein summation
+    # e.g. "zb,abcd->azcd"
+    einstr = (
+        ''.join(deriv_inds) + "," +
+        ''.join(input_inds) + "->" +
+        ''.join(output_inds)
+    )
     Nx = len(x)
     dx = x[1] - x[0]
     derivs = [d0, d1, d2, d3, d4]
-    deriv = derivs[order](Nx, dx) @ y
 
+    deriv = np.einsum(einstr, derivs[order](Nx, dx),  y)
     return deriv
 
 
