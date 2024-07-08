@@ -25,7 +25,8 @@ def savgol_deriv(x, y, window_length=3, polyorder=3,
     if periodic:
         mode="wrap"
     else:
-        mode="interp"
+        mode="nearest"
+    
     dx = x[1] - x[0]
 
     deriv = signal.savgol_filter(np.ma.array(y, mask=nanmask),
@@ -48,6 +49,70 @@ def gauss_deriv(x, y, sigma=1, order=1, axis=0, periodic=False):
         mode = "reflect"
 
     return ndimage.gaussian_filter(y, sigma=sigma, order=order, axes=(axis,), mode=mode)
+
+
+# 4th order finite difference derivatives
+def d0(Nx, dx):
+    return np.eye(Nx)
+
+def d1(Nx, dx):
+    grad_utri = (
+        +2/3  * np.eye(Nx, k=1) +
+        -1/12 * np.eye(Nx, k=2) +
+        +1/12 * np.eye(Nx, k=Nx-2) +
+        -2/3  * np.eye(Nx, k=Nx-1)  
+    )
+    grad = grad_utri - grad_utri.T
+    return grad / dx
+
+def d2(Nx, dx):
+    lap_utri = (
+        +4/3  *  np.eye(Nx, k=Nx-1) + 
+        -1/12 * np.eye(Nx, k=Nx-2) + 
+        -1/12 * np.eye(Nx, k=2) + 
+        +4/3  *  np.eye(Nx, k=1)
+    )
+
+    lap_diag = np.diag(-5/2 * np.ones(Nx))
+
+    lap = lap_diag + lap_utri + lap_utri.T
+    return lap / dx**2
+
+def d3(Nx, dx):
+    gradlap_utri = (
+        -13/8 * np.eye(Nx, k=1)    +
+        1     * np.eye(Nx, k=2)    +
+        -1/8  * np.eye(Nx, k=3)    +
+        +1/8  * np.eye(Nx, k=Nx-3) +
+        -1    * np.eye(Nx, k=Nx-2) +
+        13/8  * np.eye(Nx, k=Nx-1)
+    )
+    gradlap = gradlap_utri - gradlap_utri.T
+    return gradlap/dx**3
+
+def d4(Nx, dx):
+    laplap_utri = (
+        -13/2 * np.eye(Nx, k=1) + 
+        2     * np.eye(Nx, k=2) + 
+        -1/6  * np.eye(Nx, k=3) + 
+        -1/6  * np.eye(Nx, k=Nx-3) + 
+        2     * np.eye(Nx, k=Nx-2) + 
+        -13/2 * np.eye(Nx, k=Nx-1)
+    )
+
+    laplap_diag = np.diag(28/3 * np.ones(Nx))
+    
+    laplap = laplap_diag + laplap_utri + laplap_utri.T
+    return laplap / dx**4
+
+def fd_deriv(x, y, order=1):
+    Nx = len(x)
+    dx = x[1] - x[0]
+    derivs = [d0, d1, d2, d3, d4]
+    deriv = derivs[order](Nx, dx) @ y
+
+    return deriv
+
 
 
 def get_data(file, year=1990, region="all"):
