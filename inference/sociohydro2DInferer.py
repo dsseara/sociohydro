@@ -375,27 +375,37 @@ class SociohydroInfer1D():
         
         self.diff_method = diff_method
 
-    def differentiate(self, f, x, order, periodic, axis):
+    def differentiate(self, x, f, order, periodic, axis,
+                      window_length=5, polyorder=4,
+                      smooth=True, smooth_polyorder=2):
         if self.diff_method == "savgol":
             dfdx = savgol_deriv(x, f,
-                                window_length=5,
-                                polyorder=3,
+                                window_length=window_length,
+                                polyorder=polyorder,
                                 order=order,
                                 periodic=periodic,
                                 axis=axis,
-                                smooth=True,
-                                smooth_polyorder=2)
+                                smooth=smooth,
+                                smooth_polyorder=smooth_polyorder)
         else:
             raise NotImplementedError("Only derivative available is savgol")
 
         return dfdx
     
-    def calc_features(self, ABt, x):
+    def calc_features(self, ABt, x, window_length=5):
         # get all derivatives
-        ABt_d1 = self.differentiate(x, ABt, order=1, periodic=self.periodic, axis=0)  # ∂/∂x
-        ABt_d2 = self.differentiate(x, ABt, order=2, periodic=self.periodic, axis=0)  # ∂^2/∂x^2
-        ABt_d3 = self.differentiate(x, ABt, order=3, periodic=self.periodic, axis=0)  # ∂^3/∂x^3
-        ABt_d4 = self.differentiate(x, ABt, order=4, periodic=self.periodic, axis=0)  # ∂^4/∂x^4
+        ABt_d1 = self.differentiate(x, ABt, order=1, axis=0,
+                                    periodic=self.periodic,
+                                    window_length=window_length)  # ∂/∂x
+        ABt_d2 = self.differentiate(x, ABt, order=2, axis=0,
+                                    periodic=self.periodic,
+                                    window_length=window_length)  # ∂^2/∂x^2
+        ABt_d3 = self.differentiate(x, ABt, order=3, axis=0,
+                                    periodic=self.periodic,
+                                    window_length=window_length)  # ∂^3/∂x^3
+        ABt_d4 = self.differentiate(x, ABt, order=4, axis=0,
+                                    periodic=self.periodic,
+                                    window_length=window_length)  # ∂^4/∂x^4
 
         # flip A and B for cross-terms
         BAt = np.flip(ABt, axis=-1)
@@ -407,12 +417,12 @@ class SociohydroInfer1D():
         # vacancies
         ϕ0 = 1 - ABt.sum(axis=-1)
         ϕ0 = ϕ0[..., np.newaxis]
-        ϕ0_d1 = self.differentiate(x, ϕ0, order=1, periodic=self.periodic, axis=0)
-        ϕ0_d2 = self.differentiate(x, ϕ0, order=2, periodic=self.periodic, axis=0)
-
-
-        ϕ0_D1 = ϕ0_D1[..., np.newaxis]
-        ϕ0_D2 = ϕ0_D2[..., np.newaxis]
+        ϕ0_d1 = self.differentiate(x, ϕ0, order=1, axis=0,
+                                   periodic=self.periodic,
+                                   window_length=window_length)
+        ϕ0_d2 = self.differentiate(x, ϕ0, order=2, axis=0,
+                                   periodic=self.periodic,
+                                   window_length=window_length)
 
         # ∂x( φ0 ∂x φi - φi ∂x φ0 )
         T_term   = (ABt_d2 * ϕ0) - (ABt * ϕ0_d2)
@@ -465,7 +475,8 @@ class SociohydroInfer1D():
         return features
     
 
-    def test_train_split(self, train_pct):
+    def test_train_split(self, train_pct,
+                         window_length=5):
 
         # assume that all fields occur at the same time so
         # we assume that train/test split occurs at same times
@@ -486,9 +497,12 @@ class SociohydroInfer1D():
         
         # loop over all datasets
         for ABt, x, t in zip(self.ABts, self.xs, self.ts):
-            features = self.calc_features(ABt, x)
+            features = self.calc_features(ABt, x,
+                                          window_length=window_length)
             nfeat = features.shape[-1]
-            ABt_dt   = self.differentiate(t, ABt, order=1, periodic=False, axis=-2)  # ∂/∂t
+            ABt_dt   = self.differentiate(t, ABt, order=1, axis=-2,
+                                          periodic=False,
+                                          window_length=window_length)  # ∂/∂t
 
             # ∂ϕA/∂t
             At_dt = ABt_dt[..., 0]
@@ -543,8 +557,10 @@ class SociohydroInfer1D():
         return dAdt, dBdt, featA, featB
 
 
-    def fit(self, train_pct, regressor="linear", alpha=0.1):
-        dAdt, dBdt, featA, featB = self.test_train_split(train_pct)
+    def fit(self, train_pct, regressor="linear", alpha=0.1,
+            window_length=5):
+        dAdt, dBdt, featA, featB = self.test_train_split(train_pct,
+                                                         window_length=window_length)
 
         if regressor.lower() not in ['linear', 'elastic', 'sgd', 'lasso']:
             raise ValueError("Regressor must be one of ['linear', 'elastic', 'sgd', 'lasso']. Currently: " + regressor)
