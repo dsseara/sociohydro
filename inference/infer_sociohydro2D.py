@@ -9,7 +9,7 @@ from tqdm import tqdm
 import pandas as pd
 from datetime import datetime
 import argparse
-from sociohydro2DInferer import *
+from inference.sociohydroInferer import *
 from infer_utils import *
 
 

@@ -9,7 +9,7 @@ using JSON
 using ProgressMeter
 # using Zygote
 
-export run_simulation, update!, load_data
+export run_simulation, update!, load_data, compute_force, grad, lap, gradlap
 
 # fourth order finite differences
 function grad(Nx::Int64, dx::Float64)
@@ -250,7 +250,7 @@ function run_simulation(ϕA::Array{T, 1}, ϕB::Array{T, 1}, t_init::T,
     # define gradient operators
     global ∇ = grad(Nx, dx)
     global ∇² = lap(Nx, dx)
-    global ∇³ = gradlap(Nx, dx)
+    global ∇³ = gradlap(Nx, dx)d
 
     # ensure we have a clean directory to dump data into
     if isdir(savepath)
