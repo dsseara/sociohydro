@@ -105,12 +105,22 @@ class SociohydroInfer():
         pass
 
     def test_train_split(self, train_pct,
-                         window_length=5):
+                         window_length=5,
+                         lims=None):
 
         dAdt = []
         dBdt = []
         featA = []
         featB = []
+
+        if lims is None:
+            # full slice for all dimensions
+            slices = (slice(None),) * self.ABts[0].ndim
+        else:
+            # create tuple of slices for the spatial dimensions
+            slices = tuple(slice(start, stop) for start, stop in lims)
+            # add full slice for all other dimensions
+            slices += (slice(None),) * (self.ABts[0].ndim - len(slices))
         
         # loop over all datasets
         # for ABt, x, t in zip(self.ABts, self.xs, self.ts):
@@ -123,6 +133,9 @@ class SociohydroInfer():
                                           axis=-2,
                                           periodic=False,
                                           window_length=window_length)  # ∂/∂t
+            
+            features = features[slices]
+            ABt_dt = ABt_dt[slices]
 
             # ∂ϕA/∂t
             At_dt = ABt_dt[..., 0]
@@ -175,10 +188,11 @@ class SociohydroInfer():
 
 
     def fit(self, train_pct, regressor="linear",
-            alpha=0.1, window_length=5):
+            alpha=0.1, window_length=5, lims=None):
         
         dAdt, dBdt, featA, featB = self.test_train_split(train_pct,
-                                                         window_length=window_length)
+                                                         window_length=window_length,
+                                                         lims=lims)
 
         if regressor.lower() not in self.regressor_opts:
             raise ValueError(f"Regressor must be one of {self.regressor_opts}. Currently: " + regressor)
@@ -271,6 +285,7 @@ class SociohydroInfer2D(SociohydroInfer):
         ABt = self.ABts[region]
         x = self.xs[region]
         y = self.ys[region]
+
         # get all derivatives
         ABt_x    = self.differentiate(x, ABt, order=1, axis=1,
                                       periodic=self.periodic,
