@@ -108,20 +108,19 @@ class SociohydroInfer():
                          window_length=5):
 
         dAdt = []
-        # dAdt_test = []
         dBdt = []
-        # dBdt_test = []
         featA = []
-        # featA_test = []
         featB = []
-        # featB_test = []
         
         # loop over all datasets
-        for ABt, x, t in zip(self.ABts, self.xs, self.ts):
-            features = self.calc_features(ABt, x,
-                                          window_length=window_length)
+        # for ABt, x, t in zip(self.ABts, self.xs, self.ts):
+        for region in range(self.n_regions):
+            features = self.calc_features(region, window_length=window_length)
             nfeat = features.shape[-1]
-            ABt_dt   = self.differentiate(t, ABt, order=1, axis=-2,
+            ABt_dt   = self.differentiate(self.ts[region],
+                                          self.ABts[region],
+                                          order=1,
+                                          axis=-2,
                                           periodic=False,
                                           window_length=window_length)  # ∂/∂t
 
@@ -142,30 +141,14 @@ class SociohydroInfer():
                                     np.logical_and(Bt_dt_notnan, fB_notnan))
 
             At_dt = At_dt[notnan].ravel()
-            # At_dt_train = At_dt[..., train][notnan].ravel()
-            # At_dt_test  = At_dt[...,  test][notnan].ravel()
             fA = np.reshape(fA[notnan], [len(At_dt), nfeat])
-            # fA_train = np.reshape(fA[..., train, :][notnan],
-            #                       [len(At_dt_train), nfeat])
-            # fA_test  = np.reshape(fA[..., test,  :][notnan],
-            #                       [len(At_dt_test),  nfeat])
             Bt_dt = Bt_dt[notnan].ravel()
-            # Bt_dt_train = Bt_dt[..., train][notnan].ravel()
-            # Bt_dt_test  = Bt_dt[...,  test][notnan].ravel()
             fB = np.reshape(fB[notnan], [len(Bt_dt), nfeat])
-            # fB_train = np.reshape(fB[..., train, :][notnan],
-            #                       [len(Bt_dt_train), nfeat])
-            # fB_test  = np.reshape(fB[...,  test, :][notnan],
-            #                       [len(Bt_dt_test),  nfeat])
 
             # append data to everything
-            # dAdt_train.append(At_dt_train)
             dAdt.append(At_dt)
-            # featA_train.append(fA_train)
             featA.append(fA)
-            # dBdt_train.append(Bt_dt_train)
             dBdt.append(Bt_dt)
-            # featB_train.append(fB_train)
             featB.append(fB)
 
         dAdt = np.concatenate(dAdt)
@@ -269,28 +252,74 @@ class SociohydroInfer2D(SociohydroInfer):
 
     """
 
-    def __init__(self, ϕ1: list, ϕ2: list,
-                 x: list, y: list, t: list,
-                 t_dim: int = 0, diff_method: str = "savgol"):
-        SociohydroInfer.__init__(ϕ1, ϕ2, x, t, t_dim, diff_method)
+    def __init__(self, 
+                 ϕ1: list, 
+                 ϕ2: list,             
+                 x: list, 
+                 y: list, 
+                 t: list,
+                 t_dim: int = 0,
+                 diff_method: str = "savgol",
+                 periodic: bool = False):
+        SociohydroInfer.__init__(self, ϕ1, ϕ2, x, t,
+                                 t_dim, diff_method, periodic)
         self.ys = y
         self.dys = [why[1] - why[0] for why in y]
 
     
-    def calc_features(self, ABt, x, y):
+    def calc_features(self, region, window_length=5):
+        ABt = self.ABts[region]
+        x = self.xs[region]
+        y = self.ys[region]
         # get all derivatives
-        ABt_x    = self.differentiate(x, ABt, order=1, periodic=False, axis=1)    # ∂/∂x
-        ABt_y    = self.differentiate(y, ABt, order=1, periodic=False, axis=0)    # ∂/∂y
-        ABt_xx   = self.differentiate(x, ABt, order=2, periodic=False, axis=1)    # ∂^2/∂x^2
-        ABt_yy   = self.differentiate(y, ABt, order=2, periodic=False, axis=0)    # ∂^2/∂y^2
-        ABt_xy   = self.differentiate(y, ABt_x, order=1, periodic=False, axis=0)       # ∂^2/(∂x ∂y)
-        ABt_xxx  = self.differentiate(x, ABt, order=3, periodic=False, axis=1)    # ∂^3/∂x^3
-        ABt_yyy  = self.differentiate(y, ABt, order=3, periodic=False, axis=0)    # ∂^3/∂y^3
-        ABt_xxy  = self.differentiate(y, ABt_xx, order=1, periodic=False, axis=0)      # ∂^3/(∂x^2 ∂x)
-        ABt_yyx  = self.differentiate(x, ABt_yy, order=1, periodic=False, axis=1)      # ∂^3/(∂y^2 ∂x)
-        ABt_xxxx = self.differentiate(x, ABt, order=4, periodic=False, axis=1)    # ∂^4/∂x^4
-        ABt_xxyy = self.differentiate(y, ABt_xx, order=2, periodic=False, axis=0)      # ∂^4/(∂x^2 ∂y^2)
-        ABt_yyyy = self.differentiate(x, ABt, order=4, periodic=False, axis=0)    # ∂^4/∂y^4
+        ABt_x    = self.differentiate(x, ABt, order=1, axis=1,
+                                      periodic=self.periodic,
+                                      window_length=window_length,
+                                      smooth_polyorder=2)    # ∂/∂x
+        ABt_y    = self.differentiate(y, ABt, order=1, axis=0,
+                                      periodic=self.periodic,
+                                      window_length=window_length,
+                                      smooth_polyorder=2)    # ∂/∂y
+        ABt_xx   = self.differentiate(x, ABt, order=2, axis=1,
+                                      periodic=self.periodic,
+                                      window_length=window_length,
+                                      smooth_polyorder=2)    # ∂^2/∂x^2
+        ABt_yy   = self.differentiate(y, ABt, order=2, axis=0,
+                                      periodic=self.periodic,
+                                      window_length=window_length,
+                                      smooth_polyorder=2)    # ∂^2/∂y^2
+        ABt_xy   = self.differentiate(y, ABt_x, order=1, axis=0,
+                                      periodic=self.periodic,
+                                      window_length=window_length,
+                                      smooth_polyorder=2)       # ∂^2/(∂x ∂y)
+        ABt_xxx  = self.differentiate(x, ABt, order=3, axis=1,
+                                      periodic=self.periodic,
+                                      window_length=window_length,
+                                      smooth_polyorder=2)    # ∂^3/∂x^3
+        ABt_yyy  = self.differentiate(y, ABt, order=3, axis=0,
+                                      periodic=self.periodic,
+                                      window_length=window_length,
+                                      smooth_polyorder=2)    # ∂^3/∂y^3
+        ABt_xxy  = self.differentiate(y, ABt_xx, order=1, axis=0,
+                                      periodic=self.periodic,
+                                      window_length=window_length,
+                                      smooth_polyorder=2)      # ∂^3/(∂x^2 ∂x)
+        ABt_yyx  = self.differentiate(x, ABt_yy, order=1, axis=1,
+                                      periodic=self.periodic,
+                                      window_length=window_length,
+                                      smooth_polyorder=2)      # ∂^3/(∂y^2 ∂x)
+        ABt_xxxx = self.differentiate(x, ABt, order=4, axis=1,
+                                      periodic=self.periodic,
+                                      window_length=window_length,
+                                      smooth_polyorder=1)    # ∂^4/∂x^4
+        ABt_xxyy = self.differentiate(y, ABt_xx, order=2, axis=0,
+                                      periodic=self.periodic,
+                                      window_length=window_length,
+                                      smooth_polyorder=2)      # ∂^4/(∂x^2 ∂y^2)
+        ABt_yyyy = self.differentiate(x, ABt, order=4, axis=0,
+                                      periodic=self.periodic,
+                                      window_length=window_length,
+                                      smooth_polyorder=1)    # ∂^4/∂y^4
         # ABt_yyxx = self.differentiate(x, ABt_yy, order=2, periodic=False, axis=1)      # ∂^4/∂x^4
 
         # construct gradient vector, laplacian, gradient of laplacian vector, and bilaplacian
@@ -376,115 +405,6 @@ class SociohydroInfer2D(SociohydroInfer):
         return features
     
 
-    def test_train_split(self, train_pct):
-
-        # assume that all fields occur at the same time so
-        # we assume that train/test split occurs at same times
-        # for all
-        train = np.random.choice(len(self.ts[0]),
-                                 int(len(self.ts[0]) * train_pct),
-                                 replace=False)
-        test = np.array([i for i in np.arange(len(self.ts[0])) if i not in train])
-
-        dAdt_train = []
-        dAdt_test = []
-        dBdt_train = []
-        dBdt_test = []
-        featA_train = []
-        featA_test = []
-        featB_train = []
-        featB_test = []
-        
-        # loop over all datasets
-        for ABt, x, y, t in zip(self.ABts, self.xs, self.ys, self.ts):
-            features = self.calc_features(ABt, x, y)
-            nfeat = features.shape[-1]
-            ABt_dt   = self.differentiate(t, ABt, order=1, periodic=False, axis=-2)   # ∂/∂t
-
-            # ∂ϕA/∂t
-            At_dt = ABt_dt[..., 0]
-            At_dt_notnan = np.all(~np.isnan(At_dt), axis=-1)
-            # features of A
-            fA = features[..., 0, :]
-            fA_notnan = np.all(~np.isnan(fA), axis=(-1, -2))
-            # ∂ϕB/∂t
-            Bt_dt = ABt_dt[..., 1]
-            Bt_dt_notnan = np.all(~np.isnan(Bt_dt), axis=-1)
-            # features of B
-            fB = features[..., 1, :]
-            fB_notnan = np.all(~np.isnan(fB), axis=(-1, -2))
-
-            notnan = np.logical_and(np.logical_and(At_dt_notnan, fA_notnan),
-                                    np.logical_and(Bt_dt_notnan, fB_notnan))
-
-            At_dt_train = At_dt[..., train][notnan].ravel()
-            At_dt_test  = At_dt[...,  test][notnan].ravel()
-            fA_train = np.reshape(fA[..., train, :][notnan], [len(At_dt_train), nfeat])
-            fA_test  = np.reshape(fA[..., test,  :][notnan], [len(At_dt_test),  nfeat])
-            Bt_dt_train = Bt_dt[..., train][notnan].ravel()
-            Bt_dt_test  = Bt_dt[...,  test][notnan].ravel()
-            fB_train = np.reshape(fB[..., train, :][notnan], [len(Bt_dt_train), nfeat])
-            fB_test  = np.reshape(fB[...,  test, :][notnan], [len(Bt_dt_test),  nfeat])
-
-            # append data to everything
-            # nanmask = np.logical_and(np.logical_and(np.all(~np.isnan(At_dt), axis=-1), np.all(~np.isnan(fA), axis=(-1, -2))),
-            #                          np.logical_and(np.all(~np.isnan(Bt_dt), axis=-1), np.all(~np.isnan(fB), axis=(-1, -2))))
-            # mask_train = np.all(~np.isnan(fA_train), axis=1)
-            # mask_test = np.all(~np.isnan(fA_test), axis=1)
-            
-            dAdt_train.append(At_dt_train)
-            dAdt_test.append(At_dt_test)
-            featA_train.append(fA_train)
-            featA_test.append(fA_test)
-            dBdt_train.append(Bt_dt_train)
-            dBdt_test.append(Bt_dt_test)
-            featB_train.append(fB_train)
-            featB_test.append(fB_test)
-        
-        dAdt = {"train": np.concatenate(dAdt_train),
-                "test" : np.concatenate(dAdt_test)}
-        dBdt = {"train": np.concatenate(dBdt_train),
-                "test" : np.concatenate(dBdt_test)}
-        
-        featA = {"train": np.concatenate(featA_train),
-                 "test" : np.concatenate(featA_test)}
-        featB = {"train": np.concatenate(featB_train),
-                 "test" : np.concatenate(featB_test)}
-
-        return dAdt, dBdt, featA, featB
-
-
-    def fit(self, train_pct, regressor="linear", alpha=0.1):
-        dAdt, dBdt, featA, featB = self.test_train_split(train_pct)
-
-        if regressor.lower() not in ['linear', 'elastic', 'sgd', 'lasso']:
-            raise ValueError("Regressor must be one of ['linear', 'elastic', 'sgd', 'lasso']. Currently: " + regressor)
-        
-        if regressor.lower() == "linear":
-            regA = lm.LinearRegression()
-            regB = lm.LinearRegression()
-        elif regressor.lower() == "elasticnet":
-            regA = lm.ElasticNet(alpha=alpha, l1_ratio=0.5)
-            regB = lm.ElasticNet(alpha=alpha, l1_ratio=0.5)
-        elif regressor.lower() == "sgd":
-            regA = lm.SGDRegressor(loss="squared_error")
-            regB = lm.SGDRegressor(loss="squared_error")
-        elif regressor.lower() == "lasso":
-            regA = lm.Lasso(alpha=alpha)
-            regB = lm.Lasso(alpha=alpha)
-
-        # perform fit
-        fitA = regA.fit(featA["train"], dAdt["train"])
-        fitB = regB.fit(featB["train"], dBdt["train"])
-
-        # pearson correlation coefficient
-        pearsonr_A = stats.pearsonr(dAdt["test"], fitA.predict(featA["test"])).statistic
-        pearsonr_B = stats.pearsonr(dBdt["test"], fitB.predict(featB["test"])).statistic
-        
-
-        return fitA, fitB, dAdt, dBdt, featA, featB, pearsonr_A, pearsonr_B
-
-
 class SociohydroInfer1D(SociohydroInfer):
     """
     Class used to perform linear regression on 1D time series data
@@ -537,7 +457,9 @@ class SociohydroInfer1D(SociohydroInfer):
                                  diff_method=diff_method,
                                  periodic=periodic)
     
-    def calc_features(self, ABt, x, window_length=5):
+    def calc_features(self, region, window_length=5):
+        ABt = self.ABts[region]
+        x = self.xs[region]
         # get all derivatives
         ABt_d1 = self.differentiate(x, ABt, order=1, axis=0,
                                     periodic=self.periodic,
@@ -659,118 +581,3 @@ class SociohydroInfer1D(SociohydroInfer):
                              νiii_term, νiij_term, νijj_term], axis=-1)
 
         return features
-    
-
-    # def test_train_split(self, train_pct,
-    #                      window_length=5):
-
-    #     # assume that all fields occur at the same time so
-    #     # we assume that train/test split occurs at same times
-    #     # for all
-    #     train = np.random.choice(len(self.ts[0]),
-    #                              int(len(self.ts[0]) * train_pct),
-    #                              replace=False)
-    #     test = np.array([i for i in np.arange(len(self.ts[0])) if i not in train])
-
-    #     dAdt_train = []
-    #     dAdt_test = []
-    #     dBdt_train = []
-    #     dBdt_test = []
-    #     featA_train = []
-    #     featA_test = []
-    #     featB_train = []
-    #     featB_test = []
-        
-    #     # loop over all datasets
-    #     for ABt, x, t in zip(self.ABts, self.xs, self.ts):
-    #         features = self.calc_features(ABt, x,
-    #                                       window_length=window_length)
-    #         nfeat = features.shape[-1]
-    #         ABt_dt   = self.differentiate(t, ABt, order=1, axis=-2,
-    #                                       periodic=False,
-    #                                       window_length=window_length)  # ∂/∂t
-
-    #         # ∂ϕA/∂t
-    #         At_dt = ABt_dt[..., 0]
-    #         At_dt_notnan = np.all(~np.isnan(At_dt), axis=-1)
-    #         # features of A
-    #         fA = features[..., 0, :]
-    #         fA_notnan = np.all(~np.isnan(fA), axis=(-1, -2))
-    #         # ∂ϕB/∂t
-    #         Bt_dt = ABt_dt[..., 1]
-    #         Bt_dt_notnan = np.all(~np.isnan(Bt_dt), axis=-1)
-    #         # features of B
-    #         fB = features[..., 1, :]
-    #         fB_notnan = np.all(~np.isnan(fB), axis=(-1, -2))
-
-    #         notnan = np.logical_and(np.logical_and(At_dt_notnan, fA_notnan),
-    #                                 np.logical_and(Bt_dt_notnan, fB_notnan))
-
-    #         At_dt_train = At_dt[..., train][notnan].ravel()
-    #         At_dt_test  = At_dt[...,  test][notnan].ravel()
-    #         fA_train = np.reshape(fA[..., train, :][notnan], [len(At_dt_train), nfeat])
-    #         fA_test  = np.reshape(fA[..., test,  :][notnan], [len(At_dt_test),  nfeat])
-    #         Bt_dt_train = Bt_dt[..., train][notnan].ravel()
-    #         Bt_dt_test  = Bt_dt[...,  test][notnan].ravel()
-    #         fB_train = np.reshape(fB[..., train, :][notnan], [len(Bt_dt_train), nfeat])
-    #         fB_test  = np.reshape(fB[...,  test, :][notnan], [len(Bt_dt_test),  nfeat])
-
-    #         # append data to everything
-    #         # nanmask = np.logical_and(np.logical_and(np.all(~np.isnan(At_dt), axis=-1), np.all(~np.isnan(fA), axis=(-1, -2))),
-    #         #                          np.logical_and(np.all(~np.isnan(Bt_dt), axis=-1), np.all(~np.isnan(fB), axis=(-1, -2))))
-    #         # mask_train = np.all(~np.isnan(fA_train), axis=1)
-    #         # mask_test = np.all(~np.isnan(fA_test), axis=1)
-            
-    #         dAdt_train.append(At_dt_train)
-    #         dAdt_test.append(At_dt_test)
-    #         featA_train.append(fA_train)
-    #         featA_test.append(fA_test)
-    #         dBdt_train.append(Bt_dt_train)
-    #         dBdt_test.append(Bt_dt_test)
-    #         featB_train.append(fB_train)
-    #         featB_test.append(fB_test)
-        
-    #     dAdt = {"train": np.concatenate(dAdt_train),
-    #             "test" : np.concatenate(dAdt_test)}
-    #     dBdt = {"train": np.concatenate(dBdt_train),
-    #             "test" : np.concatenate(dBdt_test)}
-        
-    #     featA = {"train": np.concatenate(featA_train),
-    #              "test" : np.concatenate(featA_test)}
-    #     featB = {"train": np.concatenate(featB_train),
-    #              "test" : np.concatenate(featB_test)}
-
-    #     return dAdt, dBdt, featA, featB
-
-
-    # def fit(self, train_pct, regressor="linear", alpha=0.1,
-    #         window_length=5):
-    #     dAdt, dBdt, featA, featB = self.test_train_split(train_pct,
-    #                                                      window_length=window_length)
-
-    #     if regressor.lower() not in ['linear', 'ridge', 'elasticnet', 'sgd', 'lasso']:
-    #         raise ValueError("Regressor must be one of ['linear', 'elasticnet', 'sgd', 'lasso']. Currently: " + regressor)
-        
-    #     if regressor.lower() == "linear":
-    #         regA = lm.LinearRegression()
-    #         regB = lm.LinearRegression()
-    #     elif regressor.lower() == "elasticnet":
-    #         regA = lm.ElasticNet(alpha=alpha, l1_ratio=0.5)
-    #         regB = lm.ElasticNet(alpha=alpha, l1_ratio=0.5)
-    #     elif regressor.lower() == "sgd":
-    #         regA = lm.SGDRegressor(loss="squared_error")
-    #         regB = lm.SGDRegressor(loss="squared_error")
-    #     elif regressor.lower() == "lasso":
-    #         regA = lm.Lasso(alpha=alpha)
-    #         regB = lm.Lasso(alpha=alpha)
-
-    #     # perform fit
-    #     fitA = regA.fit(featA["train"], dAdt["train"])
-    #     fitB = regB.fit(featB["train"], dBdt["train"])
-
-    #     # pearson correlation coefficient
-    #     pearsonr_A = stats.pearsonr(dAdt["test"], fitA.predict(featA["test"])).statistic
-    #     pearsonr_B = stats.pearsonr(dBdt["test"], fitB.predict(featB["test"])).statistic
-        
-
-    #     return fitA, fitB, dAdt, dBdt, featA, featB, pearsonr_A, pearsonr_B
