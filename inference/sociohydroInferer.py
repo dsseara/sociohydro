@@ -340,7 +340,7 @@ class SociohydroInfer2D(SociohydroInfer):
                                       periodic=self.periodic,
                                       window_length=window_length,
                                       smooth_polyorder=2)      # ∂^4/(∂x^2 ∂y^2)
-        ABt_yyyy = self.differentiate(x, ABt, order=4, axis=0,
+        ABt_yyyy = self.differentiate(y, ABt, order=4, axis=0,
                                       periodic=self.periodic,
                                       window_length=window_length,
                                       smooth_polyorder=1)    # ∂^4/∂y^4
