@@ -250,7 +250,7 @@ function run_simulation(ϕA::Array{T, 1}, ϕB::Array{T, 1}, t_init::T,
     # define gradient operators
     global ∇ = grad(Nx, dx)
     global ∇² = lap(Nx, dx)
-    global ∇³ = gradlap(Nx, dx)d
+    global ∇³ = gradlap(Nx, dx)
 
     # ensure we have a clean directory to dump data into
     if isdir(savepath)
