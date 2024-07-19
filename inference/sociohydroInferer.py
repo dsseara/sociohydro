@@ -178,7 +178,7 @@ class SociohydroInfer():
         
         npts = len(dAdt)
         train = np.random.choice(npts, int(npts * train_pct), replace=False)
-        test = np.array([i for i in np.arange(npts) if i not in train])
+        test = np.array(list(set(range(npts)) - set(train)))
 
         
         dAdt = {"train": dAdt[train],
