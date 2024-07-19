@@ -109,7 +109,7 @@ def d4(Nx, dx):
     return laplap / dx**4
 
 def fd_deriv(x, y, order=1, axis=0):
-    ndims = y.ndims
+    ndims = y.ndim
     # index input array
     input_inds = list(string.ascii_lowercase[:ndims])
     # index derivative matrix, assume input array never gets to z
