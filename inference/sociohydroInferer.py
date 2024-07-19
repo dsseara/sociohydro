@@ -106,7 +106,8 @@ class SociohydroInfer():
 
     def test_train_split(self, train_pct,
                          window_length=5,
-                         lims=None):
+                         lims=None,
+                         ddt_minimum=0.0):
 
         dAdt = []
         dBdt = []
@@ -136,6 +137,12 @@ class SociohydroInfer():
             
             features = features[slices]
             ABt_dt = ABt_dt[slices]
+
+            large_ddt = np.where((np.sum(np.abs(ABt_dt[..., 0]), axis=-1) >= ddt_minimum) &
+                                 (np.sum(np.abs(ABt_dt[..., 1]), axis=-1) >= ddt_minimum))
+
+            features = features[large_ddt]
+            ABt_dt = ABt_dt[large_ddt]
 
             # ∂ϕA/∂t
             At_dt = ABt_dt[..., 0]
@@ -188,11 +195,13 @@ class SociohydroInfer():
 
 
     def fit(self, train_pct, regressor="linear",
-            alpha=0.1, window_length=5, lims=None):
+            alpha=0.1, window_length=5, lims=None,
+            ddt_minimum=0.0):
         
         dAdt, dBdt, featA, featB = self.test_train_split(train_pct,
                                                          window_length=window_length,
-                                                         lims=lims)
+                                                         lims=lims,
+                                                         ddt_minimum=ddt_minimum)
 
         if regressor.lower() not in self.regressor_opts:
             raise ValueError(f"Regressor must be one of {self.regressor_opts}. Currently: " + regressor)
