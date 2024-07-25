@@ -103,10 +103,10 @@ if __name__ == "__main__":
 
     mesh = fp.Grid2D(nx=nx, ny=ny, dx=dx, dy=dy)
     
-    ϕ1 = fp.CellVariable(name=r"$\phi_0$", mesh=mesh)
-    μ̃1 = fp.CellVariable(name=r"$\tilde{\mu}_0$", mesh=mesh)
-    ϕ2 = fp.CellVariable(name=r"$\phi_1$", mesh=mesh)
-    μ̃2 = fp.CellVariable(name=r"$\tilde{\mu}_1$", mesh=mesh)
+    ϕ1 = fp.CellVariable(name=r"$\phi_0$", mesh=mesh, hasOld=1)
+    μ̃1 = fp.CellVariable(name=r"$\tilde{\mu}_0$", mesh=mesh, hasOld=1)
+    ϕ2 = fp.CellVariable(name=r"$\phi_1$", mesh=mesh, hasOld=1)
+    μ̃2 = fp.CellVariable(name=r"$\tilde{\mu}_1$", mesh=mesh, hasOld=1)
 
     if args.icType == "uniform":
         ic1 = fp.GaussianNoiseVariable(mesh=mesh, mean=args.phi1,
@@ -173,7 +173,14 @@ if __name__ == "__main__":
     flag += 1
 
     while elapsed < duration:
-        eq.solve(dt=dt)
+        ϕ1.updateOld()
+        μ̃1.updateOld()
+        ϕ2.updateOld()
+        μ̃2.updateOld()
+        res = 1e10
+        while res > 1e-5:
+            res = eq.sweep(dt=dt)
+        # eq.solve(dt=dt)
         elapsed += dt
         if elapsed >= t_save[flag]:
             print(f"t={elapsed:0.2f} / {duration}", end="\r")

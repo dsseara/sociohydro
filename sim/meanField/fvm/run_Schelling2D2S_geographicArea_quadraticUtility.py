@@ -197,10 +197,10 @@ if __name__ == "__main__":
     νBWW = args.nuBWW
     
 
-    ϕW = fp.CellVariable(name=r"$\phi_W$", mesh=mesh)
-    μW = fp.CellVariable(name=r"$\tilde{\mu}_W$", mesh=mesh)
-    ϕB = fp.CellVariable(name=r"$\phi_B$", mesh=mesh)
-    μB = fp.CellVariable(name=r"$\tilde{\mu}_B$", mesh=mesh)
+    ϕW = fp.CellVariable(name=r"$\phi_W$", mesh=mesh, hasOld=True)
+    μW = fp.CellVariable(name=r"$\tilde{\mu}_W$", mesh=mesh, hasOld=True)
+    ϕB = fp.CellVariable(name=r"$\phi_B$", mesh=mesh, hasOld=True)
+    μB = fp.CellVariable(name=r"$\tilde{\mu}_B$", mesh=mesh, hasOld=True)
 
     ϕW[:] = ϕW0_cell
     ϕB[:] = ϕB0_cell
@@ -268,7 +268,14 @@ if __name__ == "__main__":
     #             flag += 1
     # elif args.timestepper == "linear":
     while elapsed < duration:
-        eq.solve(dt=dt)
+        ϕW.updateOld()
+        μW.updateOld()
+        ϕB.updateOld()
+        μB.updateOld()
+        res = 1e10
+        while res > 1e-5:
+            res = eq.sweep(dt=dt)
+        # eq.solve(dt=dt)
         elapsed += dt
         if elapsed >= t_save[flag]:
             print(f"t={elapsed:0.2f} / {duration}", end="\r")
