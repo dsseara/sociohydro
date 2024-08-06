@@ -1,7 +1,22 @@
 import numpy as np
 from sklearn import linear_model as lm
-from scipy import stats
+from scipy import stats, optimize
 from infer_utils import *
+
+
+def growth(x, a, b, c, form="exp"):
+    form_list = ["exp", "linear"]
+    
+    if form.lower() not in form_list:
+        raise ValueError("growth is either exp or linear")
+    
+    if form.lower() == "exp":
+        g = a * np.exp(b * x) + c
+    elif form.lower() == "linear":
+        g = a * x + b
+    
+    return g
+
 
 class SociohydroInfer():
     """
@@ -101,13 +116,31 @@ class SociohydroInfer():
 
         return dfdx
     
-    def calc_features(self, ABt, x, window_length=5):
+    def calc_growthRate(self, region_id):
+        
+        ABt = self.ABts[region_id]
+        t = self.ts[region_id]
+
+        spatial_axes = tuple(range(0, ABt.ndim-2))
+        ABt_mean = np.nansum(ABt, axis=spatial_axes)
+        g = []
+        for phi in ABt_mean.T:
+            popt, pcovW = optimize.curve_fit(growth, t,
+                                             phi,
+                                             p0=[1e-3, 1e-6, 0],
+                                             maxfev=int(1e5))
+            g.append(popt[1])
+        
+        return g
+
+    def calc_features(self, region, window_length=5):
         pass
 
     def test_train_split(self, train_pct,
                          window_length=5,
                          lims=None,
-                         ddt_minimum=0.0):
+                         ddt_minimum=0.0,
+                         consider_growth=True):
 
         dAdt = []
         dBdt = []
@@ -134,6 +167,10 @@ class SociohydroInfer():
                                           axis=-2,
                                           periodic=False,
                                           window_length=window_length)  # ∂/∂t
+            growth_rates = self.calc_growthRate(region)
+
+            if consider_growth:
+                ABt_dt -= self.ABts[region] * growth_rates
             
             features = features[slices]
             ABt_dt = ABt_dt[slices]
