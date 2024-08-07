@@ -228,17 +228,22 @@ class SociohydroInfer():
         featB = {"train": featB[train, :],
                  "test" : featB[test, :]}
 
-        return dAdt, dBdt, featA, featB
+        return dAdt, dBdt, featA, featB, growth_rates
 
 
-    def fit(self, train_pct, regressor="linear",
-            alpha=0.1, window_length=5, lims=None,
-            ddt_minimum=0.0):
+    def fit(self, train_pct,
+            regressor="linear",
+            alpha=0.1,
+            window_length=5,
+            lims=None,
+            ddt_minimum=0.0,
+            consider_growth=True):
         
-        dAdt, dBdt, featA, featB = self.test_train_split(train_pct,
-                                                         window_length=window_length,
-                                                         lims=lims,
-                                                         ddt_minimum=ddt_minimum)
+        dAdt, dBdt, featA, featB, growth_rates = self.test_train_split(train_pct,
+                                                                       window_length=window_length,
+                                                                       lims=lims,
+                                                                       ddt_minimum=ddt_minimum,
+                                                                       consider_growth=consider_growth)
 
         if regressor.lower() not in self.regressor_opts:
             raise ValueError(f"Regressor must be one of {self.regressor_opts}. Currently: " + regressor)
@@ -267,7 +272,7 @@ class SociohydroInfer():
         pearsonr_A = stats.pearsonr(dAdt["test"], fitA.predict(featA["test"])).statistic
         pearsonr_B = stats.pearsonr(dBdt["test"], fitB.predict(featB["test"])).statistic
 
-        return fitA, fitB, dAdt, dBdt, featA, featB, pearsonr_A, pearsonr_B
+        return fitA, fitB, dAdt, dBdt, featA, featB, pearsonr_A, pearsonr_B, growth_rates
 
 
 class SociohydroInfer2D(SociohydroInfer):
