@@ -134,7 +134,7 @@ def fd_deriv(x, y, order=1, axis=0):
 
 def get_capacity(file, region="all", method="wb"):
     with h5py.File(file, "r") as d:
-        x_grid = d[d.keys()[0]]["x_grid"][()]
+        x_grid = d[list(d.keys())[0]]["x_grid"][()]
         capacity = np.zeros(x_grid.shape)
 
         if region == "all":
