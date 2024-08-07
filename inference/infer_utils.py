@@ -132,40 +132,50 @@ def fd_deriv(x, y, order=1, axis=0):
     return deriv
 
 
+def get_capacity(file, region="all", method="wb"):
+    with h5py.File(file, "r") as d:
+        x_grid = d[d.keys()[0]]["x_grid"][()]
+        capacity = np.zeros(x_grid.shape)
 
-def get_data(file, year=1990, region="all", norm=True, norm_type="wb"):
+        if region == "all":
+            region_str = "masked"
+        elif region == "county":
+            region_str = "county"
+
+        for key in d.keys():
+            if method.lower() == "wb":
+                wb = (d[key]["white_grid_" + region_str][()] +
+                      d[key]["black_grid_" + region_str][()])
+                capacity = np.fmax(capacity, wb)
+            elif method.lower() == "total":
+                tot = d[key]["total_grid_" + region_str][()]
+                capacity = np.fmax(capacity, tot)
+
+        return capacity
+
+
+def get_data(file, year=1990, region="all", norm=True, method="wb"):
     ykey = str(year)
+    
+    if region == "all":
+        region_str = "masked"
+    elif region == "county":
+        region_str = "county"
+
     with h5py.File(file, "r") as d:
         x_grid = d[ykey]["x_grid"][()]
         y_grid = d[ykey]["y_grid"][()]
-        capacity = np.zeros(x_grid.shape)
-        
-        if region == "county":
-            white = d[ykey]["white_grid_county"][()]
-            black = d[ykey]["black_grid_county"][()]
-            for key in d.keys():
-                if norm_type.lower() == "wb":
-                    capacity = np.fmax(capacity, d[key]["white_grid_county"][:] + d[key]["black_grid_county"][:])
-                elif norm_type.lower() == "total":
-                    capacity = np.fmax(capacity, d[key]["total_grid_county"][:])
-
-        elif region == "all":
-            white = d[ykey]["white_grid_masked"][()]
-            black = d[ykey]["black_grid_masked"][()]
-            total = d[ykey]["total_grid_masked"][()]
-            for key in d.keys():
-                if norm_type.lower() == "wb":
-                    capacity = np.fmax(capacity, d[key]["white_grid_masked"][:] + d[key]["black_grid_masked"][:])
-                elif norm_type.lower() == "total":
-                    capacity = np.fmax(capacity, d[key]["total_grid_masked"][:])
+        white = d[ykey]["white_grid_" + region_str][()]
+        black = d[ykey]["black_grid_" + region_str][()]
 
         if norm:
+            capacity = get_capacity(file, region=region, method=method)
             ϕW = white / (1.1 * capacity)
             ϕB = black / (1.1 * capacity)
         else:
             ϕW = white
             ϕB = black
-            
+
     return ϕW, ϕB, x_grid, y_grid
 
 
