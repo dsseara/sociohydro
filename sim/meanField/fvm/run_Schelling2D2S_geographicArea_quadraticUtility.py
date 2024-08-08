@@ -191,6 +191,7 @@ if __name__ == "__main__":
     νWWW = args.nuWWW
     νWWB = args.nuWWB
     νWBB = args.nuWBB
+    rW = args.growthW
 
     TB   = args.tempB
     ΓB   = args.gammaB
@@ -199,6 +200,7 @@ if __name__ == "__main__":
     νBBB = args.nuBBB
     νBWB = args.nuBWB
     νBWW = args.nuBWW
+    rB = args.growthB
     
 
     ϕW = fp.CellVariable(name=r"$\phi_W$", mesh=mesh, hasOld=True)
@@ -215,22 +217,22 @@ if __name__ == "__main__":
     dπWdϕW = κWW + 2 * νWWW * ϕW + νWWB * ϕB
     μW_taylorExpand = -πW + TW * (np.log(ϕW) - np.log(ϕ0))
     dμWdϕW = -dπWdϕW + TW * (1 - ϕB) / (ϕW * ϕ0)
+    SW = rW * ϕW
     
     mobilityB = ϕB * ϕ0
     πB = κBW * ϕW + κBB * ϕB + νBWW * ϕW * ϕW + νBWB * ϕW * ϕB + νBBB * ϕB * ϕB
     dπBdϕB = κBB + νBWB * ϕW + 2 * νBBB * ϕB
     μB_taylorExpand = -πB + TB * (np.log(ϕB) - np.log(ϕ0))
     dμBdϕB = -dπBdϕB + TB * (1 - ϕW) / (ϕB * ϕ0)
+    SB = rB * ϕB
     
-    eqW_1 = (fp.TransientTerm(var=ϕW) == fp.DiffusionTerm(coeff=mobilityW,
-                                                          var=μW))
+    eqW_1 = (fp.TransientTerm(var=ϕW) == fp.DiffusionTerm(coeff=mobilityW, var=μW) + SW)
     eqW_2 = (fp.ImplicitSourceTerm(coeff=1, var=μW)
              == fp.ImplicitSourceTerm(coeff=dμWdϕW, var=ϕW)
              - dμWdϕW * ϕW + μW_taylorExpand
              - fp.DiffusionTerm(coeff=ΓW, var=ϕW))
     
-    eqB_1 = (fp.TransientTerm(var=ϕB) == fp.DiffusionTerm(coeff=mobilityB,
-                                                          var=μB))
+    eqB_1 = (fp.TransientTerm(var=ϕB) == fp.DiffusionTerm(coeff=mobilityB, var=μB) + SB)
     eqB_2 = (fp.ImplicitSourceTerm(coeff=1, var=μB)
              == fp.ImplicitSourceTerm(coeff=dμBdϕB, var=ϕB)
              - dμBdϕB * ϕB + μB_taylorExpand
