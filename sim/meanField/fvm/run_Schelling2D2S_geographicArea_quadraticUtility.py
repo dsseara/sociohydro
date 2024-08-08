@@ -154,20 +154,20 @@ if __name__ == "__main__":
     ϕW0_cell = interpolate.griddata(grid_points,
                                     np.nan_to_num(ϕW0.ravel(), nan=1e-3),
                                     cell_points,
-                                    fill_value=0)
+                                    fill_value=1e-3)
     ϕWf_cell = interpolate.griddata(grid_points,
                                     np.nan_to_num(ϕWf.ravel(), nan=1e-3),
                                     cell_points,
-                                    fill_value=0)
+                                    fill_value=1e-3)
 
     ϕB0_cell = interpolate.griddata(grid_points,
                                     np.nan_to_num(ϕB0.ravel(), nan=1e-3),
                                     cell_points,
-                                    fill_value=0)
+                                    fill_value=1e-3)
     ϕBf_cell = interpolate.griddata(grid_points,
                                     np.nan_to_num(ϕBf.ravel(), nan=1e-3),
                                     cell_points,
-                                    fill_value=0)
+                                    fill_value=1e-3)
     ###############
 
     ### save things common to all time-points ###
@@ -274,10 +274,8 @@ if __name__ == "__main__":
     #             flag += 1
     # elif args.timestepper == "linear":
     while elapsed < duration:
-        ϕW.updateOld()
-        μW.updateOld()
-        ϕB.updateOld()
-        μB.updateOld()
+        for var in [ϕW, μW, ϕB, μB]:
+            var.updateOld()
         res = 1e10
         while res > 1e-5:
             res = eq.sweep(dt=dt)
