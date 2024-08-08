@@ -246,13 +246,15 @@ class SociohydroInfer():
             window_length=5,
             lims=None,
             ddt_minimum=0.0,
-            consider_growth=True):
+            consider_growth=True,
+            growth_rates=[]):
         
         dAdt, dBdt, featA, featB, growth_rates = self.test_train_split(train_pct,
                                                                        window_length=window_length,
                                                                        lims=lims,
                                                                        ddt_minimum=ddt_minimum,
-                                                                       consider_growth=consider_growth)
+                                                                       consider_growth=consider_growth,
+                                                                       growth_rates=growth_rates)
 
         if regressor.lower() not in self.regressor_opts:
             raise ValueError(f"Regressor must be one of {self.regressor_opts}. Currently: " + regressor)
