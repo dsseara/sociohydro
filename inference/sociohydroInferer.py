@@ -283,7 +283,7 @@ class SociohydroInfer():
         pearsonr_A = stats.pearsonr(dAdt["test"], fitA.predict(featA["test"])).statistic
         pearsonr_B = stats.pearsonr(dBdt["test"], fitB.predict(featB["test"])).statistic
 
-        return fitA, fitB, dAdt, dBdt, featA, featB, pearsonr_A, pearsonr_B, growth_rates
+        return fitA, fitB, dAdt, dBdt, featA, featB, pearsonr_A, pearsonr_B
 
 
 class SociohydroInfer2D(SociohydroInfer):

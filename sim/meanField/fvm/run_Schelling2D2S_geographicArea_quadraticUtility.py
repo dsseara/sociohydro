@@ -43,6 +43,8 @@ if __name__ == "__main__":
                         help="strength of non-linearity in White utility")
     parser.add_argument("-nuWBB", type=float, default=0.0,
                         help="strength of non-linearity in White utility")
+    parser.add_argument("-growthW", type=float, default=0.0,
+                        help="growth term for White population")
     
     # parameters for Black population
     parser.add_argument("-tempB", type=float, default=0.1,
@@ -54,11 +56,13 @@ if __name__ == "__main__":
     parser.add_argument("-kBW", type=float, default=0.0,
                         help="Black cross-utility for White population")
     parser.add_argument("-nuBBB", type=float, default=0.0,
-                        help="strength of non-linearity in White utility")
+                        help="strength of non-linearity in Black utility")
     parser.add_argument("-nuBWB", type=float, default=0.0,
-                        help="strength of non-linearity in White utility")
+                        help="strength of non-linearity in Black utility")
     parser.add_argument("-nuBWW", type=float, default=0.0,
-                        help="strength of non-linearity in White utility")
+                        help="strength of non-linearity in Black utility")
+    parser.add_argument("-growthB", type=float, default=0.0,
+                        help="growth term for Black population")
     
     # parameters for simulation
     parser.add_argument("-capacityType", type=str, default="local",
