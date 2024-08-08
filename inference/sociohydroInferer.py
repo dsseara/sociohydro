@@ -140,12 +140,21 @@ class SociohydroInfer():
                          window_length=5,
                          lims=None,
                          ddt_minimum=0.0,
-                         consider_growth=True):
+                         consider_growth=True,
+                         growth_rates=[]):
 
         dAdt = []
         dBdt = []
         featA = []
         featB = []
+
+        if consider_growth:
+            if len(growth_rates) != self.n_regions:
+                raise ValueError("len(growth_rates) must be equal to the number of regions considered")
+            if np.any([len(g)!=2 for g in growth_rates]):
+                raise ValueError("need a growth rate for each population in all regions")
+        else:
+            growth_rates = np.zeros((self.n_regions, 2))
 
         if lims is None:
             # full slice for all dimensions
@@ -167,10 +176,10 @@ class SociohydroInfer():
                                           axis=-2,
                                           periodic=False,
                                           window_length=window_length)  # ∂/∂t
-            growth_rates = self.calc_growthRate(region)
+            # growth_rates = self.calc_growthRate(region)
 
-            if consider_growth:
-                ABt_dt -= self.ABts[region] * growth_rates
+            # if consider_growth:
+            ABt_dt -= self.ABts[region] * growth_rates[region]
             
             features = features[slices]
             ABt_dt = ABt_dt[slices]
