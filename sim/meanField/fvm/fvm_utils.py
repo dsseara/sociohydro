@@ -6,6 +6,9 @@ from rasterio import features, transform
 import fipy as fp
 import h5py
 from scipy import ndimage, optimize
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+from matplotlib import collections
 import freqent.freqentn as fen
 
 def get_boundary(gdf):
@@ -229,3 +232,20 @@ def dump(datafile, group_name, datadict):
         grp = d.create_group(group_name)
         for key, value in datadict.items():
             grp.create_dataset(key, data=value)
+
+
+def plot_mesh(data, mesh, ax,
+              cmap=plt.cm.viridis,
+              vmin=None, vmax=None):
+    
+    xmin, ymin = mesh.extents["min"]
+    xmax, ymax = mesh.extents["max"]
+    
+    col = collections.PolyCollection(np.moveaxis(mesh.vertexCoords[:, mesh._orderedCellVertexIDs],
+                                                 (0, 1, 2), (2, 1, 0)))
+    norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+    col.set_color(cmap(norm(data)))
+    ax.add_collection(col)
+    ax.set(xlim=[xmin, xmax],
+           ylim=[ymin, ymax])
+    ax.set_aspect(1)
