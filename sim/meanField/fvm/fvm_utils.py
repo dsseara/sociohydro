@@ -45,12 +45,12 @@ def make_boundary(data, x_grid, y_grid, crs):
     y_shear = 0
 
     affine = transform.Affine(x_dil, x_shear, x_trans,
-                                   y_shear, y_dil, y_trans)
+                              y_shear, y_dil, y_trans)
     shapes = features.shapes((1 - np.isnan(data)).astype(np.uint8), transform=affine)
     polygons = [geometry.Polygon(shape[0]["coordinates"][0]) for shape in shapes if shape[1] == 1]
 
-    grid_boundary = gpd.GeoDataFrame([polygons[0]])
-    grid_boundary.geometry = grid_boundary[0]
+    grid_boundary = gpd.GeoDataFrame([polygons[0]], geometry=[polygons[0]])
+    # grid_boundary.geometry = grid_boundary[0]
     grid_boundary.crs = crs
     
     return grid_boundary
