@@ -165,7 +165,7 @@ def get_capacity(file, region="all", method="wb"):
 def get_data(file, year=1990, region="all", norm=True, method="wb"):
     ykey = str(year)
     
-    if region == "all":
+    if (region == "all") | (region == "masked"):
         region_str = "masked"
     elif region == "county":
         region_str = "county"
