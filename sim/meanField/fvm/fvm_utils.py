@@ -308,11 +308,11 @@ def calc_gradients(var1, var2):
             ],
             [
                 T2_term,
-                k21_term,
                 k22_term,
-                ν211_term,
-                ν212_term,
+                k21_term,
                 ν222_term,
+                ν212_term,
+                ν211_term,
                 Γ2_term
             ]
         ]
@@ -425,11 +425,11 @@ def calc_gradients(var1, var2):
         ],
         [
             T2_term,
-            k21_term,
             k22_term,
-            ν211_term,
-            ν212_term,
+            k21_term,
             ν222_term,
+            ν212_term,
+            ν211_term,
             Γ2_term
         ]
     ]
