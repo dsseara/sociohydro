@@ -155,20 +155,34 @@ def get_data(file, year=1990, region="all", norm=True, method="wb"):
     return ϕW, ϕB, x_grid, y_grid
 
 
-def get_capacity(file, method="local", region="masked"):
+def get_capacity(file, region="all", method="wb"):
     with h5py.File(file, "r") as d:
-        if method == "uniform":
-            capacity = -1e10
-            for key in d.keys():
-                    capacity = max(capacity, np.nanmax(d[key]["white_grid_" + region][:] + d[key]["black_grid_" + region][:]))
-        elif method == "local":
-            capacity = np.zeros(d["2020"]["x_grid"].shape)
-            for key in d.keys():
-                capacity = np.fmax(capacity, d[key]["white_grid_" + region][:] + d[key]["black_grid_" + region][:])
+        x_grid = d[list(d.keys())[0]]["x_grid"][()]
+        capacity = np.zeros(x_grid.shape)
+
+        regions = ["all", "county"]
+        if region not in regions:
+            raise ValueError("region is either all or county")
         else:
-            raise ValueError("options for capacity are either local or uniform")
-    
-    return capacity
+            if region == "all":
+                region_str = "masked"
+            elif region == "county":
+                region_str = "county"
+        
+        methods = ["wb", "total"]
+        if method not in methods:
+            raise ValueError("method is either wb or total")
+
+        for key in d.keys():
+            if method.lower() == "wb":
+                wb = (d[key]["white_grid_" + region_str][()] +
+                      d[key]["black_grid_" + region_str][()])
+                capacity = np.fmax(capacity, wb)
+            elif method.lower() == "total":
+                tot = d[key]["total_grid_" + region_str][()]
+                capacity = np.fmax(capacity, tot)
+
+        return capacity
 
 
 def nansmooth(arr, sigma=1):
