@@ -268,3 +268,173 @@ def plot_mesh(data, mesh, ax,
     ax.set(xlim=[xmin, xmax],
            ylim=[ymin, ymax])
     ax.set_aspect(1)
+
+
+def build_term_value(term, solver): 
+   matrix = term._buildMatrix(var=term.var, SparseMatrix=solver)[1]
+   numValue = np.dot(matrix.numpyArray , term.var.numericValue)
+   return fp.CellVariable(mesh=term.var.mesh, value=numValue)
+
+
+def calc_gradients(var1, var2):
+    """
+    calculate gradients of fipy CellVariable `var` used in
+    sociohydro model
+
+    returns: all_grads, sociohydro_grads
+        all_grads = [ 
+            lap(ϕ1)
+            lap(lap(ϕ1))
+            lap(ϕ2)
+            lap(lap(ϕ2))
+            grad(ϕ1) . grad(ϕ1)
+            grad(ϕ2) . grad(ϕ2)
+            grad(ϕ1) . grad(ϕ2)
+            grad(ϕ1) . grad(lap(ϕ1))
+            grad(ϕ1) . grad(lap(ϕ2))
+            grad(ϕ2) . grad(lap(ϕ1))
+            grad(ϕ2) . grad(lap(ϕ2))
+        ]
+
+        sociohydro_grads = [
+            [
+                T1_term,
+                k11_term,
+                k12_term,
+                ν111_term,
+                ν112_term,
+                ν122_term,
+                Γ1_term
+            ],
+            [
+                T2_term,
+                k21_term,
+                k22_term,
+                ν211_term,
+                ν212_term,
+                ν222_term,
+                Γ2_term
+            ]
+        ]
+        where:
+            Ti_term = div( φ0 grad(φi) - φi grad(φ0) )
+            kij_term = div( φ0 φi grad(φj) )
+            νijk_term = div( φ0 φi grad(φj φk))
+            Γi_term = div( φ0 φi grad(lap(φi)) )
+    """
+    solver = fp.solvers._MeshMatrix
+
+    # scalar gradients
+    # Δϕ1
+    var1_lap = build_term_value(fp.DiffusionTerm(coeff=1, var=var1), solver)
+    var1_lap.name = "var1_lap"
+    # ΔΔϕ1
+    var1_bilap = build_term_value(fp.DiffusionTerm(coeff=(1,1), var=var1), solver)
+    var1_bilap.name = "var1_bilap"
+
+    # Δϕ2
+    var2_lap = build_term_value(fp.DiffusionTerm(coeff=1, var=var2), solver)
+    var2_lap.name = "var2_lap"
+    # ΔΔϕ2
+    var2_bilap = build_term_value(fp.DiffusionTerm(coeff=(1,1), var=var2), solver)
+    var2_bilap.name = "var2_bilap"
+
+    # vector gradients
+    var1_grad = var1.grad
+    var1_gradlap = var1_lap.grad
+    var2_grad = var2.grad
+    var2_gradlap = var2_lap.grad
+
+    # construct all scalar quantities of vector gradients up to 4 gradients
+    # ∇ϕ1 . ∇ϕ1
+    var1_grad_var1_grad = fp.CellVariable(name="var1_grad_var1_grad", mesh=var1.mesh)
+    var1_grad_var1_grad.value =  np.sum((var1_grad * var1_grad).value,    axis=0)
+
+    # ∇ϕ2 . ∇ϕ2
+    var2_grad_var2_grad = fp.CellVariable(name="var2_grad_var2_grad", mesh=var2.mesh)
+    var2_grad_var2_grad.value =  np.sum((var2_grad * var2_grad).value,    axis=0)
+
+    # ∇ϕ1 . ∇ϕ2
+    var1_grad_var2_grad = fp.CellVariable(name="var1_grad_var2_grad", mesh=var1.mesh)
+    var1_grad_var2_grad.value =  np.sum((var1_grad * var2_grad).value,    axis=0)
+
+    # ∇ϕ1 . ∇Δϕ1
+    var1_grad_var1_gradlap = fp.CellVariable(name="var1_grad_var1_gradlap", mesh=var1.mesh)
+    var1_grad_var1_gradlap.value =  np.sum((var1_grad * var1_gradlap).value, axis=0)
+
+    # ∇ϕ1 . ∇Δϕ2
+    var1_grad_var2_gradlap = fp.CellVariable(name="var1_grad_var2_gradlap", mesh=var1.mesh)
+    var1_grad_var2_gradlap.value =  np.sum((var1_grad * var2_gradlap).value, axis=0)
+
+    # ∇ϕ2 . ∇Δϕ1
+    var2_grad_var1_gradlap = fp.CellVariable(name="var2_grad_var1_gradlap", mesh=var2.mesh)
+    var2_grad_var1_gradlap.value =  np.sum((var2_grad * var1_gradlap).value, axis=0)
+
+    # ∇ϕ2 . ∇Δϕ2
+    var2_grad_var2_gradlap = fp.CellVariable(name="var2_grad_var2_gradlap", mesh=var2.mesh)
+    var2_grad_var2_gradlap.value =  np.sum((var2_grad * var2_gradlap).value, axis=0)
+
+
+    all_grads = [
+        var1_lap,
+        var1_bilap,
+        var2_lap,
+        var2_bilap,
+        var1_grad_var1_grad,
+        var2_grad_var2_grad,
+        var1_grad_var2_grad,
+        var1_grad_var1_gradlap,
+        var1_grad_var2_gradlap,
+        var2_grad_var1_gradlap,
+        var2_grad_var2_gradlap
+    ]
+
+    # now construct gradients used specifically in sociohydro with quadratic utility functions
+    # vacancies
+    var0 = fp.CellVariable(mesh=var1.mesh, name="var0",
+                           value = 1 - var1.value - var2.value)
+    var0_lap = fp.CellVariable(mesh=var1.mesh, name="var0_lap",
+                               value = var0.faceGrad.divergence.value * var0.mesh._cellVolumes)
+
+
+    T1_term = var0 * var1_lap - var1 * var0_lap
+    k11_term  = (var0.faceValue * var1.faceValue * var1_grad.faceValue).divergence
+    k12_term  = (var0.faceValue * var1.faceValue * var2_grad.faceValue).divergence
+    ν111_term = (var0.faceValue * var1.faceValue * (var1 * var1).grad.faceValue).divergence 
+    ν112_term = (var0.faceValue * var1.faceValue * (var1 * var2).grad.faceValue).divergence 
+    ν122_term = (var0.faceValue * var1.faceValue * (var2 * var2).grad.faceValue).divergence 
+    Γ1_term   = (var0.faceValue * var1.faceValue * var1_gradlap.faceValue).divergence 
+
+    T2_term = var0 * var2_lap - var2 * var0_lap
+    k21_term  = (var0.faceValue * var2.faceValue * var1_grad.faceValue).divergence
+    k22_term  = (var0.faceValue * var2.faceValue * var2_grad.faceValue).divergence
+    ν211_term = (var0.faceValue * var2.faceValue * (var1 * var1).grad.faceValue).divergence 
+    ν212_term = (var0.faceValue * var2.faceValue * (var1 * var2).grad.faceValue).divergence 
+    ν222_term = (var0.faceValue * var2.faceValue * (var2 * var2).grad.faceValue).divergence 
+    Γ2_term   = (var0.faceValue * var2.faceValue * var2_gradlap.faceValue).divergence
+
+    sociohydro_grads = [
+        [
+            T1_term,
+            k11_term,
+            k12_term,
+            ν111_term,
+            ν112_term,
+            ν122_term,
+            Γ1_term
+        ],
+        [
+            T2_term,
+            k21_term,
+            k22_term,
+            ν211_term,
+            ν212_term,
+            ν222_term,
+            Γ2_term
+        ]
+    ]
+
+    return all_grads, sociohydro_grads
+
+
+    
