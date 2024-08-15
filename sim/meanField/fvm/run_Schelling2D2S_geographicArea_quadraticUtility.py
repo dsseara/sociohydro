@@ -143,9 +143,9 @@ if __name__ == "__main__":
     ϕBf[Bnans] = np.nan
     
     # get correlation length of white population
-    ξ, ξvar = get_corrLength(args.inputfile, region="masked",
-                             capacity_method=args.capacityType,
-                             p0=[1, 10, 0])
+    # ξ, ξvar = get_corrLength(args.inputfile, region="masked",
+    #                          capacity_method=args.capacityType,
+    #                          p0=[1, 10, 0])
 
     # measure distances in units of ξ
     # x /= ξ
@@ -189,9 +189,9 @@ if __name__ == "__main__":
                 "phiW_initial": ϕW0_cell,
                 "phiB_initial": ϕB0_cell,
                 "phiW_final": ϕWf_cell,
-                "phiB_final": ϕBf_cell,
-                "corr_length": ξ,
-                "corr_length_var": ξvar}
+                "phiB_final": ϕBf_cell},
+                # "corr_length": ξ,
+                # "corr_length_var": ξvar}
     dump(h5file, group_name, datadict)
     ###############
 
