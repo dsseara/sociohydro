@@ -216,10 +216,10 @@ if __name__ == "__main__":
     rB = args.growthB
     
 
-    ϕW = fp.CellVariable(name=r"$\phi_W$", mesh=mesh, hasOld=True)
-    μW = fp.CellVariable(name=r"$\tilde{\mu}_W$", mesh=mesh, hasOld=True)
-    ϕB = fp.CellVariable(name=r"$\phi_B$", mesh=mesh, hasOld=True)
-    μB = fp.CellVariable(name=r"$\tilde{\mu}_B$", mesh=mesh, hasOld=True)
+    ϕW = fp.CellVariable(name=r"phiW", mesh=mesh, hasOld=True)
+    μW = fp.CellVariable(name=r"muW", mesh=mesh, hasOld=True)
+    ϕB = fp.CellVariable(name=r"phiB", mesh=mesh, hasOld=True)
+    μB = fp.CellVariable(name=r"muB", mesh=mesh, hasOld=True)
 
     ϕW[:] = ϕW0_cell
     ϕB[:] = ϕB0_cell
