@@ -189,7 +189,7 @@ if __name__ == "__main__":
                 "phiW_initial": ϕW0_cell,
                 "phiB_initial": ϕB0_cell,
                 "phiW_final": ϕWf_cell,
-                "phiB_final": ϕBf_cell},
+                "phiB_final": ϕBf_cell}
                 # "corr_length": ξ,
                 # "corr_length_var": ξvar}
     dump(h5file, group_name, datadict)
