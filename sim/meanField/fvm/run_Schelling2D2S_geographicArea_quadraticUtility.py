@@ -66,9 +66,9 @@ if __name__ == "__main__":
                         help="growth term for Black population")
     
     # parameters for simulation
-    parser.add_argument("-capacityType", type=str, default="local",
-                        choices=["uniform", "local"],
-                        help="how to calculate the carrying capacities")
+    # parser.add_argument("-capacityType", type=str, default="local",
+    #                     choices=["uniform", "local"],
+    #                     help="how to calculate the carrying capacities")
     parser.add_argument("-buffer", type=float, default=1.0,
                         help="buffer for boundary simplification")
     parser.add_argument("-simplify", type=float, default=1.0,
@@ -119,8 +119,7 @@ if __name__ == "__main__":
     # initial condition
     ϕW0, ϕB0, x, y = get_data(args.inputfile,
                               year=1990,
-                              region="masked",
-                              capacity_method=args.capacityType)
+                              region="all")
     Wnans = np.isnan(ϕW0)
     Bnans = np.isnan(ϕB0)
     ϕW0 = ndimage.gaussian_filter(np.nan_to_num(ϕW0), args.sigma)
@@ -135,8 +134,7 @@ if __name__ == "__main__":
     # final condition
     ϕWf, ϕBf, _, _ = get_data(args.inputfile,
                               year=2020,
-                              region="masked",
-                              capacity_method=args.capacityType)
+                              region="all")
     Wnans = np.isnan(ϕWf)
     Bnans = np.isnan(ϕBf)
     ϕWf = ndimage.gaussian_filter(np.nan_to_num(ϕWf), args.sigma)
