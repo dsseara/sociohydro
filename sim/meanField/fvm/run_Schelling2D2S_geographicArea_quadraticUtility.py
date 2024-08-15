@@ -2,6 +2,7 @@ import os
 import json
 from glob import glob
 import fipy as fp
+from fipy.tools.dump import write, read
 import numpy as np
 import argparse
 import h5py
@@ -12,7 +13,7 @@ from fvm_utils import *
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-datafile", type=str, required=True,
+    parser.add_argument("-inputfile", type=str, required=True,
                         help="path to hdf5 file with interpolated data for initial condition")
     parser.add_argument("-sigma", type=float, default=1.0,
                         help="size of gaussian used to smooth data")
@@ -82,17 +83,31 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     ### set up save environment ###
-    datafile = os.path.join(args.savefolder, args.filename + ".hdf5")
+    h5file = os.path.join(args.savefolder, args.filename + ".hdf5")
     paramfile = os.path.join(args.savefolder, args.filename + "_params.json")
+    fipyfolder = os.path.join(args.savefolder, "fipy_output")
     if not os.path.exists(args.savefolder):
+        # ensure savefolder is made
         os.makedirs(args.savefolder)
     else:
+        # delete files in savefolder
         files = glob(os.path.join(args.savefolder, args.filename + "*"))
         for file in files:
             try:
                 os.remove(file)
             except Exception as e:
                 print(f"could not delete {file}. Reason: {e}")
+        if not os.path.exists(fipyfolder):
+            # ensure fipyfolder is made
+            os.makedirs(fipyfolder)
+        else:
+            # delete files in fipyfolder
+            fipyfiles = glob(os.path.join(fipyfolder, "*"))
+            for fipyfile in fipyfiles:
+                try:
+                    os.remove(fipyfile)
+                except Exception as e:
+                    print(f"could not delete {fipyfile}. Reason: {e}")
     ###############
 
     ### save params ###
@@ -102,7 +117,7 @@ if __name__ == "__main__":
 
     ### load and set-up data ###
     # initial condition
-    ϕW0, ϕB0, x, y = get_data(args.datafile,
+    ϕW0, ϕB0, x, y = get_data(args.inputfile,
                               year=1990,
                               region="masked",
                               capacity_method=args.capacityType)
@@ -118,7 +133,7 @@ if __name__ == "__main__":
     y /= 1000.0
 
     # final condition
-    ϕWf, ϕBf, _, _ = get_data(args.datafile,
+    ϕWf, ϕBf, _, _ = get_data(args.inputfile,
                               year=2020,
                               region="masked",
                               capacity_method=args.capacityType)
@@ -130,7 +145,7 @@ if __name__ == "__main__":
     ϕBf[Bnans] = np.nan
     
     # get correlation length of white population
-    ξ, ξvar = get_corrLength(args.datafile, region="masked",
+    ξ, ξvar = get_corrLength(args.inputfile, region="masked",
                              capacity_method=args.capacityType,
                              p0=[1, 10, 0])
 
@@ -179,7 +194,7 @@ if __name__ == "__main__":
                 "phiB_final": ϕBf_cell,
                 "corr_length": ξ,
                 "corr_length_var": ξvar}
-    dump(datafile, group_name, datadict)
+    dump(h5file, group_name, datadict)
     ###############
 
     ### build simulation ###
@@ -270,7 +285,7 @@ if __name__ == "__main__":
     #             datadict = {"t": t_save[flag],
     #                         "phiW": ϕW.value,
     #                         "phiB": ϕB.value}
-    #             dump(datafile, gname, datadict)
+    #             dump(h5file, gname, datadict)
     #             flag += 1
     # elif args.timestepper == "linear":
     while elapsed < duration:
@@ -285,13 +300,17 @@ if __name__ == "__main__":
             print(f"t={elapsed:0.2f} / {duration}", end="\r")
             mseW = np.mean((ϕWf_cell - ϕW.value)**2)
             mseB = np.mean((ϕBf_cell - ϕB.value)**2)
+            # save to hdf5
             gname = f"n{flag:06d}"
             datadict = {"t": t_save[flag],
                         "phiW": ϕW.value,
                         "phiB": ϕB.value,
                         "mseW": mseW,
                         "mseB": mseB}
-            dump(datafile, gname, datadict)
+            dump(h5file, gname, datadict)
+            # save fipy
+            fipyfile = f"n{flag:06d}.fipy"
+            write([ϕW, ϕB, t_save[flag]], os.path.join(fipyfolder, fipyfile))
             flag += 1
     ###############
 
@@ -304,7 +323,7 @@ if __name__ == "__main__":
     print(f"Black: {mseB:0.4f}")
     ###############
 
-    # with h5py.File(datafile, "a") as d:
+    # with h5py.File(h5file, "a") as d:
     #     d.create_dataset("t_array", data=t_save)
     #     d.create_dataset("phiW_array", data=ϕW_array)
     #     d.create_dataset("phiB_array", data=ϕB_array)
