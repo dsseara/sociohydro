@@ -130,22 +130,27 @@ def make_mesh(data, x_grid, y_grid, crs,
     return mesh, simple_boundary, geo_file_contents
 
 
-def get_data(file, year=1990, region="masked", capacity_method="local"):
-    
-    if not (region == "masked") | (region == "county"):
-        raise ValueError("options for region are either 'masked' (full region) or 'county' (county only)")
-
+def get_data(file, year=1990, region="all", norm=True, method="wb"):
     ykey = str(year)
+    
+    if (region == "all") | (region == "masked"):
+        region_str = "masked"
+    elif region == "county":
+        region_str = "county"
+
     with h5py.File(file, "r") as d:
         x_grid = d[ykey]["x_grid"][()]
         y_grid = d[ykey]["y_grid"][()]
-        white = d[ykey]["white_grid_" + region][()]
-        black = d[ykey]["black_grid_" + region][()]
+        white = d[ykey]["white_grid_" + region_str][()]
+        black = d[ykey]["black_grid_" + region_str][()]
 
-    capacity = get_capacity(file, method=capacity_method, region=region)
-
-    ϕW = white / (1.1 * capacity)
-    ϕB = black / (1.1 * capacity)
+        if norm:
+            capacity = get_capacity(file, region=region, method=method)
+            ϕW = white / (1.1 * capacity)
+            ϕB = black / (1.1 * capacity)
+        else:
+            ϕW = white
+            ϕB = black
 
     return ϕW, ϕB, x_grid, y_grid
 
