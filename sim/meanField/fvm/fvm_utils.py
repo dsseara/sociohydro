@@ -398,20 +398,32 @@ def calc_gradients(var1, var2):
 
 
     T1_term = var0 * var1_lap - var1 * var0_lap
-    k11_term  = (var0.faceValue * var1.faceValue * var1_grad.faceValue).divergence
-    k12_term  = (var0.faceValue * var1.faceValue * var2_grad.faceValue).divergence
-    ν111_term = (var0.faceValue * var1.faceValue * (var1 * var1).grad.faceValue).divergence 
-    ν112_term = (var0.faceValue * var1.faceValue * (var1 * var2).grad.faceValue).divergence 
-    ν122_term = (var0.faceValue * var1.faceValue * (var2 * var2).grad.faceValue).divergence 
-    Γ1_term   = (var0.faceValue * var1.faceValue * var1_gradlap.faceValue).divergence 
+    k11_term  = build_term_value(fp.DiffusionTerm(coeff=var0 * var1, var=var1), solver=solver)
+    k12_term  = build_term_value(fp.DiffusionTerm(coeff=var0 * var1, var=var2), solver=solver)
+    ν111_term = build_term_value(fp.DiffusionTerm(coeff=var0 * var1, var=var1 * var1), solver=solver)
+    ν112_term = build_term_value(fp.DiffusionTerm(coeff=var0 * var1, var=var1 * var2), solver=solver)
+    ν122_term = build_term_value(fp.DiffusionTerm(coeff=var0 * var1, var=var2 * var2), solver=solver)
+    Γ1_term   = build_term_value(fp.DiffusionTerm(coeff=(var0 * var1, 1), var=var1), solver=solver)
+    # k11_term  = (var0.faceValue * var1.faceValue * var1_grad.faceValue).divergence
+    # k12_term  = (var0.faceValue * var1.faceValue * var2_grad.faceValue).divergence
+    # ν111_term = (var0.faceValue * var1.faceValue * (var1 * var1).grad.faceValue).divergence 
+    # ν112_term = (var0.faceValue * var1.faceValue * (var1 * var2).grad.faceValue).divergence 
+    # ν122_term = (var0.faceValue * var1.faceValue * (var2 * var2).grad.faceValue).divergence 
+    # Γ1_term   = (var0.faceValue * var1.faceValue * var1_gradlap.faceValue).divergence 
 
     T2_term = var0 * var2_lap - var2 * var0_lap
-    k21_term  = (var0.faceValue * var2.faceValue * var1_grad.faceValue).divergence
-    k22_term  = (var0.faceValue * var2.faceValue * var2_grad.faceValue).divergence
-    ν211_term = (var0.faceValue * var2.faceValue * (var1 * var1).grad.faceValue).divergence 
-    ν212_term = (var0.faceValue * var2.faceValue * (var1 * var2).grad.faceValue).divergence 
-    ν222_term = (var0.faceValue * var2.faceValue * (var2 * var2).grad.faceValue).divergence 
-    Γ2_term   = (var0.faceValue * var2.faceValue * var2_gradlap.faceValue).divergence
+    k21_term  = build_term_value(fp.DiffusionTerm(coeff=var0 * var2, var=var1), solver=solver)
+    k22_term  = build_term_value(fp.DiffusionTerm(coeff=var0 * var2, var=var2), solver=solver)
+    ν211_term = build_term_value(fp.DiffusionTerm(coeff=var0 * var2, var=var1 * var1), solver=solver)
+    ν212_term = build_term_value(fp.DiffusionTerm(coeff=var0 * var2, var=var1 * var2), solver=solver)
+    ν222_term = build_term_value(fp.DiffusionTerm(coeff=var0 * var2, var=var2 * var2), solver=solver)
+    Γ2_term   = build_term_value(fp.DiffusionTerm(coeff=(var0 * var2, 1), var=var1), solver=solver)
+    # k21_term  = (var0.faceValue * var2.faceValue * var1_grad.faceValue).divergence
+    # k22_term  = (var0.faceValue * var2.faceValue * var2_grad.faceValue).divergence
+    # ν211_term = (var0.faceValue * var2.faceValue * (var1 * var1).grad.faceValue).divergence 
+    # ν212_term = (var0.faceValue * var2.faceValue * (var1 * var2).grad.faceValue).divergence 
+    # ν222_term = (var0.faceValue * var2.faceValue * (var2 * var2).grad.faceValue).divergence 
+    # Γ2_term   = (var0.faceValue * var2.faceValue * var2_gradlap.faceValue).divergence
 
     sociohydro_grads = [
         [
