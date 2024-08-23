@@ -255,7 +255,9 @@ def dump(datafile, group_name, datadict):
 
 def plot_mesh(data, mesh, ax,
               cmap=plt.cm.viridis,
-              vmin=None, vmax=None):
+              vmin=None, vmax=None,
+              colorbar=True,
+              colorbar_title=""):
     
     xmin, ymin = mesh.extents["min"]
     xmax, ymax = mesh.extents["max"]
@@ -268,6 +270,13 @@ def plot_mesh(data, mesh, ax,
     ax.set(xlim=[xmin, xmax],
            ylim=[ymin, ymax])
     ax.set_aspect(1)
+
+    if colorbar:
+        sm = plt.cm.ScalarMappable(norm=norm, cmap=cmap)
+        cax = ax.inset_axes([1.05, 0, 0.05, 1])
+        cbar = plt.colorbar(sm, cax=cax, ax=ax,
+                            ticks=[vmin, (vmax+vmin)/2, vmax])
+        cbar.ax.set(title=colorbar_title)
 
 
 def build_term_value(term, solver): 
