@@ -15,8 +15,8 @@ def get_boundary(gdf):
     """
     return GeoDataFrame with just boundary of a given GeoDataFrame
     """
-    boundary = gpd.GeoDataFrame([gdf.unary_union])
-    boundary.geometry = boundary[0]
+    boundary = gpd.GeoDataFrame([gdf.unary_union],
+                                geometry=[gdf.unary_union])
     boundary.crs = gdf.crs
 
     return boundary
