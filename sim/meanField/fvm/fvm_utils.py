@@ -273,10 +273,12 @@ def plot_mesh(data, mesh, ax,
 
     if colorbar:
         sm = plt.cm.ScalarMappable(norm=norm, cmap=cmap)
+        vmin, vmax = sm.get_clim()
+        vmean = (vmin + vmax)/2
         cax = ax.inset_axes([1.05, 0, 0.05, 1])
         cbar = plt.colorbar(sm, cax=cax, ax=ax,
-                            ticks=[vmin, (vmax+vmin)/2, vmax])
-        cbar.ax.set(title=colorbar_title)
+                            ticks=[vmin, vmean, vmax])
+        cbar.ax.set_ylabel(colorbar_title, rotation=-90)
 
 
 def build_term_value(term, solver): 
