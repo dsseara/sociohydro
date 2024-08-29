@@ -5,7 +5,7 @@ import pandas as pd
 from rasterio import features, transform
 import fipy as fp
 import h5py
-from scipy import ndimage, optimize
+from scipy import ndimage, optimize, spatial
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 from matplotlib import collections
@@ -184,6 +184,13 @@ def get_capacity(file, region="all", method="wb"):
 
         return capacity
 
+def gaussian_blur_mesh(x, y, f, sigma=1):
+    coords = np.stack([x, y], axis=1)
+    dist = spatial.distance_matrix(coords, coords) 
+    weights = np.exp(-dist**2 / (2 * sigma))
+    weights /= weights.sum(axis=1, keepdims=True)
+    f_smooth = np.dot(weights, f)
+    return f_smooth
 
 def nansmooth(arr, sigma=1):
     """
