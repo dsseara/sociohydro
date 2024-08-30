@@ -184,13 +184,20 @@ def get_capacity(file, region="all", method="wb"):
 
         return capacity
 
-def gaussian_blur_mesh(x, y, f, sigma=1):
-    coords = np.stack([x, y], axis=1)
-    dist = spatial.distance_matrix(coords, coords) 
-    weights = np.exp(-dist**2 / (2 * sigma))
+
+def gaussian_blur_mesh(var, sigma=1, dist_mat=None):
+    x, y = var.mesh.cellCenters
+    f = var.value
+    
+    if dist_mat is None:
+        coords = np.stack([x, y], axis=1)
+        dist_mat = spatial.distance_matrix(coords, coords) 
+        
+    weights = np.exp(-dist_mat**2 / (2 * sigma))
     weights /= weights.sum(axis=1, keepdims=True)
     f_smooth = np.dot(weights, f)
-    return f_smooth
+    return fp.CellVariable(mesh=var.mesh, value=f_smooth)
+
 
 def nansmooth(arr, sigma=1):
     """
