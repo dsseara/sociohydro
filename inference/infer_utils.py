@@ -1,10 +1,12 @@
-from scipy import interpolate, signal, ndimage
+from scipy import interpolate, signal, ndimage, spatial, stats
 import numpy as np
 import h5py
 import string
 import matplotlib.pyplot as plt
 import pandas as pd
 import fipy as fp
+from glob import glob
+import os
 
 def spline_deriv(x, y, polyorder=3, order=1, axis=0, smoothing=0):
     tck = interpolate.splrep(x, y, k=polyorder, s=smoothing)
@@ -188,7 +190,8 @@ def get_data(file, year=1990, region="all", norm=True, method="wb"):
     return ϕW, ϕB, x_grid, y_grid
 
 
-def plot_coeffs(coef_df, pearson_df,
+def plot_coeffs(coef_df,
+                pearson_df=None,
                 savename="./",
                 coefs_true=None):
     fig, ax = plt.subplots(dpi=144, figsize=(4,2))
@@ -221,23 +224,24 @@ def plot_coeffs(coef_df, pearson_df,
         ax.plot(np.arange(nfeat) + 0.2, coefs_true[1],
                 "s", mfc="white", mec="C3", zorder=-1)
 
-    pW = pearson_df.loc[pearson_df.demo == "W"]
-    pB = pearson_df.loc[pearson_df.demo == "B"]
-
-    axp = ax.inset_axes([1.3, 0, 0.2, 1])
-    axp.plot([0] * len(pW), pW.coef, "C0.", alpha=0.1)
-    axp.errorbar([0], pW.coef.mean(),
-                 yerr=pW.coef.std(),
-                 fmt="o", color="C0", capsize=5)
-    axp.plot([1] * len(pB), pB.coef, "C3.", alpha=0.1)
-    axp.errorbar([1], pB.coef.mean(),
-                 yerr=pB.coef.std(),
-                 fmt="o", color="C3", capsize=5)
-    axp.set(xlim=[-0.5, 1.5],
-            xticks=[],
-            ylim=[-1, 1],
-            yticks=[-1, 0, 1],
-            ylabel="pearson coeff")
+    if pearson_df:
+        pW = pearson_df.loc[pearson_df.demo == "W"]
+        pB = pearson_df.loc[pearson_df.demo == "B"]
+    
+        axp = ax.inset_axes([1.3, 0, 0.2, 1])
+        axp.plot([0] * len(pW), pW.coef, "C0.", alpha=0.1)
+        axp.errorbar([0], pW.coef.mean(),
+                     yerr=pW.coef.std(),
+                     fmt="o", color="C0", capsize=5)
+        axp.plot([1] * len(pB), pB.coef, "C3.", alpha=0.1)
+        axp.errorbar([1], pB.coef.mean(),
+                     yerr=pB.coef.std(),
+                     fmt="o", color="C3", capsize=5)
+        axp.set(xlim=[-0.5, 1.5],
+                xticks=[],
+                ylim=[-1, 1],
+                yticks=[-1, 0, 1],
+                ylabel="pearson coeff")
     
     fig.savefig(savename + "_inferredCoefs.pdf", bbox_inches="tight")
 
@@ -248,9 +252,19 @@ def plot_regression(fit1, fit2, d1dt, d2dt, feat1, feat2,
     ax.plot(d1dt["test"],
             fit1.predict(feat1["test"]),
             "C0.", alpha=0.1, ms=1)
+    linreg1 = stats.linregress(d1dt["test"], fit1.predict(feat1["test"]))
+    ax.axline([0, linreg1.intercept], slope=linreg1.slope,
+              color="C0", ls="--", zorder=-1,
+              label=f"slope={np.round(linreg1.slope, decimals=2)}")
+    
     ax.plot(d2dt["test"],
             fit2.predict(feat2["test"]),
             "C3.", alpha=0.1, ms=1)
+    linreg2 = stats.linregress(d2dt["test"], fit2.predict(feat2["test"]))
+    ax.axline([0, linreg2.intercept], slope=linreg2.slope,
+              color="C3", ls="--", zorder=-1,
+              label=f"slope={np.round(linreg2.slope, decimals=2)}")
+    
 
     ax.ticklabel_format(axis="both", style="sci", scilimits=(0, 0), useMathText=True)
     ax.set(
@@ -265,19 +279,20 @@ def plot_regression(fit1, fit2, d1dt, d2dt, feat1, feat2,
     ax.axline([0, 0], slope=1, ls="--", color="0.8", zorder=-1)
 
     ax.set_aspect(1)
+    ax.legend()
     fig.savefig(savename + "_regressionFit.pdf", bbox_inches="tight")
     fig.savefig(savename + "_regressionFit.jpg", bbox_inches="tight")
 
 
-def build_term_value(term):
-    orig = np.copy(term.var.value)
-    dt=0.001
-    nsweeps = 10
-    eq = fp.TransientTerm(var=term.var) == term
-    for sweep in range(nsweeps):
-        eq.sweep(dt=dt)
-    time_deriv = (term.var.value - orig) / (dt)
-    return fp.CellVariable(mesh=term.var.mesh, value=time_deriv)
+# def build_term_value(term):
+#     orig = np.copy(term.var.value)
+#     dt=0.001
+#     nsweeps = 10
+#     eq = fp.TransientTerm(var=term.var) == term
+#     for sweep in range(nsweeps):
+#         eq.sweep(dt=dt)
+#     time_deriv = (term.var.value - orig) / (dt)
+#     return fp.CellVariable(mesh=term.var.mesh, value=time_deriv)
 
 # def build_term_value(term):
 #     solve_var = fp.CellVariable(mesh=term.var.mesh)
@@ -285,6 +300,12 @@ def build_term_value(term):
 #     eq.solve(solve_var)
     
 #     return solve_var
+
+def build_term_value(term): 
+    solver = fp.solvers._MeshMatrix
+    matrix = term._buildMatrix(var=term.var, SparseMatrix=solver)[1]
+    numValue = np.dot(matrix.numpyArray , term.var.numericValue)
+    return fp.CellVariable(mesh=term.var.mesh, value=numValue)
 
 
 def calc_fipyTerms(var1, var2):
@@ -360,13 +381,13 @@ def calc_fipyTerms(var1, var2):
     var1.setValue(var1_val)
     var2.setValue(var2_val)
     
-    ν112_term = (
-        fp.DiffusionTerm(coeff=var0 * var1 * var2, var=var1) + 
-        fp.DiffusionTerm(coeff=var0 * var1 * var1, var=var2)
-    )
     # ν112_term = (
-    #     fp.DiffusionTerm(coeff=var0 * var1 * var2, var=var1 * var2)
+    #     fp.DiffusionTerm(coeff=var0 * var1 * var2, var=var1) + 
+    #     fp.DiffusionTerm(coeff=var0 * var1 * var1, var=var2)
     # )
+    ν112_term = (
+        fp.DiffusionTerm(coeff=var0 * var1 * var2, var=var1 * var2)
+    )
     ν112 = build_term_value(ν112_term)
     ν112.name = "ν112"
     var1.setValue(var1_val)
@@ -394,7 +415,6 @@ def calc_fipyTerms(var1, var2):
     # ν122 = (var0.faceValue * var1.faceValue * (var2 * var2).grad.faceValue).divergence 
     # Γ1   = (var0.faceValue * var1.faceValue * var1_gradlap.faceValue).divergence 
 
-    print("var2 features")
     T2 = var0 * var2_lap - var2 * var0_lap
     
     k21_term  = fp.DiffusionTerm(coeff=var0 * var2, var=var1)
@@ -414,13 +434,13 @@ def calc_fipyTerms(var1, var2):
     var1.setValue(var1_val)
     var2.setValue(var2_val)
     
-    ν212_term = (
-        fp.DiffusionTerm(coeff=var0 * var2 * var2, var=var1) + 
-        fp.DiffusionTerm(coeff=var0 * var2 * var1, var=var2)
-    )
     # ν212_term = (
-    #     fp.DiffusionTerm(coeff=var0 * var2 * var2, var=var1 * var2)
+    #     fp.DiffusionTerm(coeff=var0 * var2 * var2, var=var1) + 
+    #     fp.DiffusionTerm(coeff=var0 * var2 * var1, var=var2)
     # )
+    ν212_term = (
+        fp.DiffusionTerm(coeff=var0 * var2 * var2, var=var1 * var2)
+    )
     ν212 = build_term_value(ν212_term)
     var1.setValue(var1_val)
     var2.setValue(var2_val)
@@ -451,3 +471,52 @@ def calc_fipyTerms(var1, var2):
     ]
 
     return sociohydro_grads
+
+
+def gaussian_blur_mesh(var, sigma=1, dist_mat=None):
+    x, y = var.mesh.cellCenters
+    f = var.value
+    
+    if dist_mat is None:
+        coords = np.stack([x, y], axis=1)
+        dist_mat = spatial.distance_matrix(coords, coords) 
+        
+    weights = np.exp(-dist_mat**2 / (2 * sigma))
+    weights /= weights.sum(axis=1, keepdims=True)
+    f_smooth = np.dot(weights, f)
+    return fp.CellVariable(mesh=var.mesh, value=f_smooth)
+
+
+def get_fipydata(folder, sigma=1):
+    files = sorted(glob(os.path.join(folder, "*.fipy")))
+    nt = len(files) - 1
+    
+    capacity, _ = fp.tools.dump.read(files[-1])
+    # if capacity = 0, just make sure phiW = 0 there
+    capacity.value[np.where(capacity.value==0.0)] = np.inf
+    # capacity_county.value[np.where(capacity_county.value==0.0)] = np.inf
+
+    mesh = capacity.mesh
+    
+    x, y = capacity.mesh.cellCenters
+    coords = np.stack([x, y], axis=-1)
+    dist_mat = spatial.distance_matrix(coords, coords)
+
+    var1 = np.zeros((len(files)-1, mesh.numberOfCells))
+    var2 = np.zeros((len(files)-1, mesh.numberOfCells))
+    t = np.zeros(len(files)-1)
+
+    for fidx, file in enumerate(files[:-1]):
+        data = fp.tools.dump.read(file)
+        ϕW = data[0] / capacity
+        ϕB = data[2] / capacity
+        if sigma > 0:
+            ϕW = gaussian_blur_mesh(ϕW, sigma=sigma, dist_mat=dist_mat).value
+            ϕB = gaussian_blur_mesh(ϕB, sigma=sigma, dist_mat=dist_mat).value
+
+        var1[fidx] = ϕW
+        var2[fidx] = ϕB
+        t[fidx] = data[-1]
+
+    return var1, var2, mesh, t
+
