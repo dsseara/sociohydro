@@ -75,6 +75,10 @@ if __name__ == "__main__":
                         help="simplify parameter for boundary simplification")
     parser.add_argument("-cellsize", type=float, default=3,
                         help="typical size of cells in mesh")
+    parser.add_argument("-use_fill_frac", type=bool, default=True,
+                        help="use local scale for population normalization")
+    parser.add_argument("-use_max_scaling", type=bool, default=False,
+                        help="use global scale for population normalization")
     # parameters for saving output
     parser.add_argument("-savefolder", type=str, default=".",
                         help="path to folder to save output")
@@ -116,14 +120,19 @@ if __name__ == "__main__":
     ###############
 
     ### load and set-up data ###
+    if not np.logical_xor(args.use_fill_frac, args.use_max_scaling):
+        raise ValueError("only one of use_fill_frac and use_max_scaling can be true")
     # initial condition
     ϕW0, ϕB0, x, y = get_data(args.inputfile,
                               year=1990,
-                              region="all")
+                              region="all",
+                              use_fill_frac=args.use_fill_frac,
+                              use_max_scaling=args.use_max_scaling)
     Wnans = np.isnan(ϕW0)
-    Bnans = np.isnan(ϕB0)
     ϕW0 = ndimage.gaussian_filter(np.nan_to_num(ϕW0), args.sigma)
     ϕW0[Wnans] = np.nan
+    
+    Bnans = np.isnan(ϕB0)
     ϕB0 = ndimage.gaussian_filter(np.nan_to_num(ϕB0), args.sigma)
     ϕB0[Bnans] = np.nan
     
@@ -134,11 +143,15 @@ if __name__ == "__main__":
     # final condition
     ϕWf, ϕBf, _, _ = get_data(args.inputfile,
                               year=2020,
-                              region="all")
+                              region="all",
+                              use_fill_frac=args.use_fill_frac,
+                              use_max_scaling=args.use_max_scaling)
+    
     Wnans = np.isnan(ϕWf)
-    Bnans = np.isnan(ϕBf)
     ϕWf = ndimage.gaussian_filter(np.nan_to_num(ϕWf), args.sigma)
     ϕWf[Wnans] = np.nan
+    
+    Bnans = np.isnan(ϕBf)
     ϕBf = ndimage.gaussian_filter(np.nan_to_num(ϕBf), args.sigma)
     ϕBf[Bnans] = np.nan
 
