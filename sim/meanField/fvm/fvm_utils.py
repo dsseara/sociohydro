@@ -130,7 +130,8 @@ def make_mesh(data, x_grid, y_grid, crs,
     return mesh, simple_boundary, geo_file_contents
 
 
-def get_data(file, year=1990, region="all", norm=True, method="wb"):
+def get_data(file, year=1990, region="all", norm=True, method="wb",
+             use_fill_frac=True, use_max_scaling=False):
     ykey = str(year)
     
     if (region == "all") | (region == "masked"):
@@ -146,8 +147,12 @@ def get_data(file, year=1990, region="all", norm=True, method="wb"):
 
         if norm:
             capacity = get_capacity(file, region=region, method=method)
-            ϕW = white / (1.1 * capacity)
-            ϕB = black / (1.1 * capacity)
+            if use_fill_frac:
+                ϕW = white / (1.1 * capacity)
+                ϕB = black / (1.1 * capacity)
+            elif use_max_scaling:
+                ϕW = white / (1.1 * np.nanmax(capacity))
+                ϕB = black / (1.1 * np.nanmax(capacity))
         else:
             ϕW = white
             ϕB = black
