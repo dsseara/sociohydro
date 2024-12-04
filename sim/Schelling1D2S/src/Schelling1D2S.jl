@@ -43,10 +43,12 @@ initial condition
     - params["alpha"] : float in [0, 1] 
         - magnitude of altruism
         - NOT IMPLEMENTED
-    - params["temperature"] : float in [0, ∞)
-        - magnitude of temperature
-    - params["gamma"] : float in [0, ∞)
+    - params["temperature"] : 2-element array
+        - magnitude of temperature for each species
+        - float in [0, ∞)
+    - params["gamma"] : 2-element array
         - magnitude of gradient penalty
+        - float in [0, ∞)
     - params["snapshot"] : int
         - number of sweeps between saving
     - params["savepath"] : string
@@ -77,7 +79,23 @@ function run_simulation!(state::Matrix{Int64},
     Nx = params["grid_size"]
     fill = params["fill"]
     alpha = params["alpha"]
-    temp = params["temperature"]
+    
+    if length(params["temperature"]) == 1
+        temp = [params["temperature"], params["temperature"]]
+    else if length(params["temperature"]) == 2
+        temp = params["temperature"]
+    else
+        error("params['temperature'] must be length 1 or 2")
+    end
+
+    if length(params["gamma"]) == 1
+        gamma = [params["gamma"], params["gamma"]]
+    else if length(params["gamma"]) == 2
+        gamma = params["gamma"]
+    else
+        error("params['gamma'] must be length 1 or 2")
+    end
+
 
     # storage params
     snapshot = params["snapshot"]
@@ -94,7 +112,7 @@ function run_simulation!(state::Matrix{Int64},
                    total_occupants,
                    dt, capacity,
                    Nx, fill,
-                   alpha, temp,
+                   alpha, temp, gamma,
                    utilities)
         
         if ii % snapshot == 0
@@ -131,10 +149,12 @@ Runs simulation starting from a random initial state
     - params["alpha"] : float in [0, 1] 
         - magnitude of altruism
         - NOT IMPLEMENTED
-    - params["temperature"] : float in [0, ∞)
-        - magnitude of temperature
-    - params["gamma"] : float in [0, ∞)
+    - params["temperature"] : 2-element array
+        - magnitude of temperature for each species
+        - float in [0, ∞)
+    - params["gamma"] : 2-element array
         - magnitude of gradient penalty
+        - float in [0, ∞)
     - params["snapshot"] : int
         - number of sweeps between saving
     - params["savepath"] : string
@@ -225,24 +245,27 @@ end
 
 """
     run_sweep!(state::Matrix{Int64},
-                    n_steps::Int64, dt::Float64,
-                    capacity::Int64, Nx::Int64,
-                    fill::Vector{Float64},
-                    alpha::Float64, temp::Float64,
-                    utilities::Function)
+               n_steps::Int64, dt::Float64,
+               capacity::Int64, Nx::Int64,
+               fill::Vector{Float64},
+               alpha::Float64, temp::Vector{Float64},
+               gamma::Vector{Float64},
+               utilities::Function)
 
-Runs a single sweep of
+Runs a single sweep of the monte carlo simulation
 """
 function run_sweep!(state::Matrix{Int64},
                     n_steps::Int64, dt::Float64,
                     capacity::Int64, Nx::Int64,
                     fill::Vector{Float64},
-                    alpha::Float64, temp::Float64,
+                    alpha::Float64,
+                    temp::Vector{Float64},
+                    gamma::Vector{Float64},
                     utilities::Function)
     rs = rand(n_steps)
     for jj in 1:n_steps
         move!(state, dt, capacity, Nx, fill,
-              alpha, temp, utilities,
+              alpha, temp, gamma, utilities,
               rs[jj])
     end
     return state
@@ -255,14 +278,15 @@ function move!(state::Matrix{Int64},
                Nx::Int64,
                fill::Vector{Float64},
                alpha::Float64,
-               temp::Float64,
+               temp::Vector{Float64},
+               gamma::Vector{Float64},
                utilities::Function,
                r::Float64)
     # select particle to move and where to move to
     from, tos, weights = pick_sites(state, capacity, Nx, fill)
 
     # find gains of each move
-    Gs = gain(state, from, tos, alpha, capacity, Nx, utilities)
+    Gs = gain(state, from, tos, alpha, capacity, Nx, gamma, utilities)
     
     # calculate probability of moving using Glauber-like rule
     gprobs = glauber_prob(Gs, temp, dt)
@@ -340,15 +364,29 @@ end
 Calculate gain in utility
 
 ## Inputs
-- from : 2-element array
-    - number of particles at origin site of both species
-- to : 2-element array
-    - number of particles at new site of both species
-- mover : Int
-    - Which species is moving, species A or B, denoted by
-      mover = 1 or mover = 2, respectively
-- params : Dict
-    - dictionary of parameters
+- state : Matrix{Int64}
+    - current state of system. size Nx2, where N is number of sites
+- from : 2-element CartesianIndex
+    - gives who is moving (species) and from where (site)
+    - given as (site, species)
+- tos : 2-element array of CartesianIndex's
+    - gives who is moving (species) and where they could move (site)
+    - each element given as (site, species)
+- alpha : float
+    - altruism parameter
+- capacity : integer
+    - total capacity of each site
+- Nx : integer
+    - number of sites
+- gamma : 2-element array of floats
+    - strength of gradient penalty
+- utilities : function
+    - function that takes the state of a site and returns
+      a 2-element array of the utilities of each species
+
+## Outputs
+- Gs : 2-element of array
+    - gains of moving to each site given in tos
 """
 function gain(state::Matrix{Int64},
               from::CartesianIndex{2},
@@ -356,6 +394,7 @@ function gain(state::Matrix{Int64},
               alpha::Float64,
               capacity::Int64,
               Nx::Int64,
+              gamma::Vector{Float64},
               utilities::Function)
 
     # state_new = copy(state_old)
@@ -402,7 +441,7 @@ function gain(state::Matrix{Int64},
                     + 3 * state[from] - 3 * state[to]
                     + state[mod1(to[1] + direction, Nx), to[2]] - 3) / capacity
 
-        Gs[toidx] = alpha * ΔU + (1 - alpha) * selfish + lap_diff
+        Gs[toidx] = alpha * ΔU + (1 - alpha) * selfish + gamma[from[2]] * lap_diff
     end
 
     return Gs
@@ -429,7 +468,7 @@ energy minimization
     - probability of accepting move. 0 < p < 1
 """
 function glauber_prob(ΔGs::Array{T, 1},
-                      temp::T, dt::T) where T<:AbstractFloat
+                      temp::Array{T}, dt::T) where T<:AbstractFloat
 
     # get probability of each move
     ps = Array{Float64}(undef, length(ΔGs))
