@@ -144,9 +144,9 @@ def get_data(file, year=1990, region="all", norm=True, method="wb",
         y_grid = d[ykey]["y_grid"][()]
         white = d[ykey]["white_grid_" + region_str][()]
         black = d[ykey]["black_grid_" + region_str][()]
-
+        capacity = get_capacity(file, region=region, method=method)
+        
         if norm:
-            capacity = get_capacity(file, region=region, method=method)
             if use_fill_frac:
                 ϕW = white / (1.1 * capacity)
                 ϕB = black / (1.1 * capacity)
