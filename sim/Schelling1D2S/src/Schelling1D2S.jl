@@ -82,7 +82,7 @@ function run_simulation!(state::Matrix{Int64},
     
     if length(params["temperature"]) == 1
         temp = [params["temperature"], params["temperature"]]
-    else if length(params["temperature"]) == 2
+    elseif length(params["temperature"]) == 2
         temp = params["temperature"]
     else
         error("params['temperature'] must be length 1 or 2")
@@ -90,7 +90,7 @@ function run_simulation!(state::Matrix{Int64},
 
     if length(params["gamma"]) == 1
         gamma = [params["gamma"], params["gamma"]]
-    else if length(params["gamma"]) == 2
+    elseif length(params["gamma"]) == 2
         gamma = params["gamma"]
     else
         error("params['gamma'] must be length 1 or 2")
