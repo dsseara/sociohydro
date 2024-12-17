@@ -177,9 +177,21 @@ function run_simulation(params::Dict{String, Any},
                         utilities::Function)
     savepath = params["savepath"]
     filename = params["filename"]
+    
+    if haskey(params, "icType")
+        if params["icType"] == "random"
+            init_func = random_state
+        elseif params["icType"] == "hat"
+            init_func = hat_state
+        else
+            error("icType must be random or hat. Currently " * params["icType"])
+        end
+    else
+        init_func = random_state
+    end
 
     # create random initial condition
-    state = random_state(params)
+    state = init_func(params)
 
     # create savepath
     if isdir(savepath)
@@ -228,20 +240,42 @@ function random_state(params::Dict{String, Any})
     # unpack parameters
     Nx = params["grid_size"]
     capacity = params["capacity"]
-    fillA, fillB = params["fill"]
+    fill = params["fill"]
 
-    total_occupants_A = Int(floor(Nx * capacity * fillA))
-    total_occupants_B = Int(floor(Nx * capacity * fillB))
-    locations_A = rand(1:Nx, total_occupants_A)
-    locations_B = rand(1:Nx, total_occupants_B)
-
-    state_A = [count(==(i), locations_A) for i in 1:Nx]
-    state_B = [count(==(i), locations_B) for i in 1:Nx]
-
-    state = cat(state_A, state_B, dims=2)
-    return state
+    totals = Int.(floor.(Nx * capacity * fill))
+    locs = [rand(1:Nx, t) for t in totals]
+    state_vecvec = [[count(==(i), loc) for i in 1:Nx] for loc in locs]
+    state_matrix = reduce(hcat, state_vecvec)
+    return state_matrix
 end
 
+
+function hat_state(params::Dict{String, Any})
+    function heaviside(x, x0)
+        h = (sign(x) + 1)/2
+        if any(iszero.(x))
+            h[iszero.(x)] .= x0
+        end
+        return h
+    end
+    
+    function hat_func(x, center, height, width)
+        hat = height * (heaviside(x - center + width / 2, 1) - heaviside(x - center - width / 2, 1))
+        return hat
+    end
+
+    Nx = params["grid_size"]
+    capacity = params["capacity"]
+    fills = params["fill"]
+    hat_heights = params["hat_height"]
+
+    x = 1:Nx
+    widths = [Nx * fill / height for (fill, height) in zip(fills, hat_heights)]
+    centers = [-0.6, 0.6] .* widths .+ (x[end] + x[1])/2
+    heights = capacity .* hat_heights
+    hats = [hat_func.(x, c, h, w) + sample(0:10, length(x)) for (c, h, w) in zip(centers, heights, widths)]
+    return Int.(stack(hats))
+end
 
 """
     run_sweep!(state::Matrix{Int64},
