@@ -122,42 +122,21 @@ if __name__ == "__main__":
     ### load and set-up data ###
     if not np.logical_xor(args.use_fill_frac, args.use_max_scaling):
         raise ValueError("only one of use_fill_frac and use_max_scaling can be true")
-    # initial condition
-    ϕW0, ϕB0, x, y = get_data(args.inputfile,
-                              year=1990,
-                              region="all",
-                              use_fill_frac=args.use_fill_frac,
-                              use_max_scaling=args.use_max_scaling)
-    Wnans = np.isnan(ϕW0)
-    ϕW0 = ndimage.gaussian_filter(np.nan_to_num(ϕW0), args.sigma)
-    ϕW0[Wnans] = np.nan
     
-    Bnans = np.isnan(ϕB0)
-    ϕB0 = ndimage.gaussian_filter(np.nan_to_num(ϕB0), args.sigma)
-    ϕB0[Bnans] = np.nan
-    
-    # measure in units of kilometers
-    x /= 1000.0
-    y /= 1000.0
-
+    # load data
+    wb, x, y, t, housing, mask = get_data(args.inputfile,
+                                          spatial_scale=1000,
+                                          sigma=args.sigma,
+                                          use_fill_frac=args.use_fill_frac,
+                                          use_max_scaling=args.use_max_scaling)
+    # initial condition 
+    wb0 = wb(1990)
     # final condition
-    ϕWf, ϕBf, _, _ = get_data(args.inputfile,
-                              year=2020,
-                              region="all",
-                              use_fill_frac=args.use_fill_frac,
-                              use_max_scaling=args.use_max_scaling)
-    
-    Wnans = np.isnan(ϕWf)
-    ϕWf = ndimage.gaussian_filter(np.nan_to_num(ϕWf), args.sigma)
-    ϕWf[Wnans] = np.nan
-    
-    Bnans = np.isnan(ϕBf)
-    ϕBf = ndimage.gaussian_filter(np.nan_to_num(ϕBf), args.sigma)
-    ϕBf[Bnans] = np.nan
+    wbf = wb(2020)
 
     # create mesh
     crs = "ESRI:102003"  # all cases fall into this CRS
-    mesh, simple_boundary, geo_file_contents = make_mesh(ϕW0, x, y, crs,
+    mesh, simple_boundary, geo_file_contents = make_mesh(wb0, x, y, crs,
                                                          args.buffer,
                                                          args.simplify,
                                                          args.cellsize)
@@ -169,20 +148,20 @@ if __name__ == "__main__":
                                                    mesh.cellCenters.value[1])])
     
     ϕW0_cell = interpolate.griddata(grid_points,
-                                    np.nan_to_num(ϕW0.ravel(), nan=1e-3),
+                                    np.nan_to_num(wb0.ravel(), nan=1e-3),
                                     cell_points,
                                     fill_value=1e-3)
     ϕWf_cell = interpolate.griddata(grid_points,
-                                    np.nan_to_num(ϕWf.ravel(), nan=1e-3),
+                                    np.nan_to_num(wbf.ravel(), nan=1e-3),
                                     cell_points,
                                     fill_value=1e-3)
 
     ϕB0_cell = interpolate.griddata(grid_points,
-                                    np.nan_to_num(ϕB0.ravel(), nan=1e-3),
+                                    np.nan_to_num(wb0.ravel(), nan=1e-3),
                                     cell_points,
                                     fill_value=1e-3)
     ϕBf_cell = interpolate.griddata(grid_points,
-                                    np.nan_to_num(ϕBf.ravel(), nan=1e-3),
+                                    np.nan_to_num(wbf.ravel(), nan=1e-3),
                                     cell_points,
                                     fill_value=1e-3)
     ###############
