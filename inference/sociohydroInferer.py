@@ -138,7 +138,7 @@ class SociohydroInfer():
 
     def test_train_split(self, train_pct,
                          window_length=5,
-                         lims=None,
+                         mask=None,
                          ddt_minimum=0.0,
                          consider_growth=True,
                          growth_rates=[]):
@@ -156,15 +156,15 @@ class SociohydroInfer():
         else:
             growth_rates = np.zeros((self.n_regions, 2))
 
-        if lims is None:
+        if mask is None:
             # full slice for all dimensions
-            slices = (slice(None),) * self.ABts[0].ndim
-        else:
-            # create tuple of slices for the spatial dimensions
-            slices = tuple(slice(start, stop) for start, stop in lims)
-            # add full slice for all other dimensions
-            slices += (slice(None),) * (self.ABts[0].ndim - len(slices))
-        
+            mask = np.full(self.ABts[0].shape[:2], True)
+        # else:
+        #     # create tuple of slices for the spatial dimensions
+        #     slices = tuple(slice(start, stop) for start, stop in lims)
+        #     # add full slice for all other dimensions
+        #     slices += (slice(None),) * (self.ABts[0].ndim - len(slices))
+
         # loop over all datasets
         # for ABt, x, t in zip(self.ABts, self.xs, self.ts):
         for region in range(self.n_regions):
@@ -180,9 +180,9 @@ class SociohydroInfer():
 
             # if consider_growth:
             ABt_dt -= self.ABts[region] * growth_rates[region]
-            
-            features = features[slices]
-            ABt_dt = ABt_dt[slices]
+
+            features = features[mask]
+            ABt_dt = ABt_dt[mask]
 
             large_ddt = np.where((np.sum(np.abs(ABt_dt[..., 0]), axis=-1) >= ddt_minimum) &
                                  (np.sum(np.abs(ABt_dt[..., 1]), axis=-1) >= ddt_minimum))
@@ -244,14 +244,14 @@ class SociohydroInfer():
             regressor="linear",
             alpha=0.1,
             window_length=5,
-            lims=None,
+            mask=None,
             ddt_minimum=0.0,
             consider_growth=True,
             growth_rates=[]):
         
         dAdt, dBdt, featA, featB, growth_rates = self.test_train_split(train_pct,
                                                                        window_length=window_length,
-                                                                       lims=lims,
+                                                                       mask=mask,
                                                                        ddt_minimum=ddt_minimum,
                                                                        consider_growth=consider_growth,
                                                                        growth_rates=growth_rates)
