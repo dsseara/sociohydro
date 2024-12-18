@@ -165,34 +165,79 @@ def get_capacity(file, region="all", method="wb"):
         return capacity
 
 
-def get_data(file, year=1990, region="all", norm=True, method="wb"):
-    ykey = str(year)
+# def get_data(file, year=1990, region="all", norm=True, method="wb"):
+#     ykey = str(year)
     
-    if (region == "all") | (region == "masked"):
-        region_str = "masked"
-    elif region == "county":
-        region_str = "county"
+#     if (region == "all") | (region == "masked"):
+#         region_str = "masked"
+#     elif region == "county":
+#         region_str = "county"
 
+#     with h5py.File(file, "r") as d:
+#         x_grid = d[ykey]["x_grid"][()]
+#         y_grid = d[ykey]["y_grid"][()]
+#         white = d[ykey]["white_grid_" + region_str][()]
+#         black = d[ykey]["black_grid_" + region_str][()]
+
+#         if norm:
+#             capacity = get_capacity(file, region=region, method=method)
+#             ϕW = white / (1.1 * capacity)
+#             ϕB = black / (1.1 * capacity)
+#         else:
+#             ϕW = white
+#             ϕB = black
+
+#     return ϕW, ϕB, x_grid, y_grid
+
+
+def get_data(file, spatial_scale=1000, sigma=2,
+             use_fill_frac=True, use_max_scaling=False):
+    """
+    Returns
+    -------
+    - wb
+    - x_grid
+    - y_grid
+    - t
+    - housing
+    - mask
+    """
+    w_grid = []
+    b_grid = []
+    t = []
     with h5py.File(file, "r") as d:
-        x_grid = d[ykey]["x_grid"][()]
-        y_grid = d[ykey]["y_grid"][()]
-        white = d[ykey]["white_grid_" + region_str][()]
-        black = d[ykey]["black_grid_" + region_str][()]
+        for year in d.keys():
+            t.append(float(year))
+            g = d[year]
+            x_grid = g['x_grid'][:] / spatial_scale
+            y_grid = g['y_grid'][:] / spatial_scale
+            mask = ~g['county_mask'][:].astype(bool)
+            area_mask = g["mask"][:].astype(bool)
 
-        if norm:
-            capacity = get_capacity(file, region=region, method=method)
-            ϕW = white / (1.1 * capacity)
-            ϕB = black / (1.1 * capacity)
-        else:
-            ϕW = white
-            ϕB = black
+            w_grid.append(np.ma.array(ndimage.gaussian_filter(g['white_grid'][:], sigma=sigma),
+                                      mask=area_mask, fill_value=np.nan).filled())
+            b_grid.append(np.ma.array(ndimage.gaussian_filter(g['black_grid'][:], sigma=sigma),
+                                      mask=area_mask, fill_value=np.nan).filled())
+    
+    t = np.array(t)
+    wb = np.stack([w_grid, b_grid], axis=1) * 100 # use units of 1/dam^2
+    mask = np.logical_and(mask, np.all(~np.isnan(wb), axis=(0,1)))
+    housing = np.sum(wb, axis=1).max(axis=0) # Assume housing is the maximum occupation level over time
+    if use_fill_frac:
+        # Convert population to occupation fraction
+        wb /= housing
+    elif use_max_scaling:
+        # Use min-max scaling
+        wb /= np.max(housing[mask])
 
-    return ϕW, ϕB, x_grid, y_grid
+    wb = interpolate.interp1d(t, wb, axis=0, fill_value='extrapolate')
+
+    return wb, x_grid, y_grid, t, housing, mask
 
 
 def plot_coeffs(coef_df,
                 pearson_df=None,
-                savename="./",
+                savename=None,
                 coefs_true=None):
     fig, ax = plt.subplots(dpi=144, figsize=(4,2))
     demo_codes = coef_df["demo"].unique()
@@ -224,7 +269,7 @@ def plot_coeffs(coef_df,
         ax.plot(np.arange(nfeat) + 0.2, coefs_true[1],
                 "s", mfc="white", mec="C3", zorder=-1)
 
-    if pearson_df:
+    if pearson_df is not None:
         pW = pearson_df.loc[pearson_df.demo == "W"]
         pB = pearson_df.loc[pearson_df.demo == "B"]
     
@@ -243,11 +288,12 @@ def plot_coeffs(coef_df,
                 yticks=[-1, 0, 1],
                 ylabel="pearson coeff")
     
-    fig.savefig(savename + "_inferredCoefs.pdf", bbox_inches="tight")
+    if savename is not None:
+        fig.savefig(savename + "_inferredCoefs.pdf", bbox_inches="tight")
 
 
 def plot_regression(fit1, fit2, d1dt, d2dt, feat1, feat2,
-             savename="./"):
+             savename=None):
     fig, ax = plt.subplots(dpi=144, figsize=(3, 3))
     ax.plot(d1dt["test"],
             fit1.predict(feat1["test"]),
@@ -280,8 +326,9 @@ def plot_regression(fit1, fit2, d1dt, d2dt, feat1, feat2,
 
     ax.set_aspect(1)
     ax.legend()
-    fig.savefig(savename + "_regressionFit.pdf", bbox_inches="tight")
-    fig.savefig(savename + "_regressionFit.jpg", bbox_inches="tight")
+    if savename is not None:
+        fig.savefig(savename + "_regressionFit.pdf", bbox_inches="tight")
+        fig.savefig(savename + "_regressionFit.jpg", bbox_inches="tight")
 
 
 # def build_term_value(term):
