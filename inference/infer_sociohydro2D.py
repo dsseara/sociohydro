@@ -13,46 +13,6 @@ from inference.sociohydroInferer import *
 from infer_utils import *
 
 
-def make_coef_plot(coef_df, pearson_coefs, savename):
-    pWs, pBs = pearson_coefs
-    nfeat = len(coef_df.name.unique())
-
-    fig, ax = plt.subplots(dpi=144, figsize=(4,2))
-
-    for demo_code, color, offset in zip(["W", "B"], ["C0", "C3"], [-0.2, +0.2]):
-        demo_df = coef_df.loc[coef_df["demo"]==demo_code][["val", "name"]]
-        xvals = pd.Categorical(demo_df.name).codes+offset
-        
-        ax.plot(xvals, demo_df.val, ".", color=color, alpha=0.1)
-        ax.errorbar(np.arange(7)+offset,
-                    demo_df.groupby("name").mean().reset_index().val.values,
-                    yerr=demo_df.groupby("name").std().reset_index().val.values,
-                    fmt="o", color=color, capsize=5)
-
-
-    ax.set(xticks=range(nfeat),
-           xticklabels=pd.Categorical(coef_df.name).categories.values,
-           ylabel="values", xlabel="coefficients")
-    for n in range(1, nfeat):
-        ax.axvline(n - 0.5, color="0.7")
-
-    ax.axhline(0, color="0.95", zorder=-1)
-
-
-    axp = ax.inset_axes([1.3, 0, 0.2, 1])
-    axp.plot([0] * len(pWs), pWs, "C0.", alpha=0.1)
-    axp.errorbar([0], np.mean(pWs), yerr=np.std(pWs),
-                fmt="o", color="C0", capsize=5)
-    axp.plot([1] * len(pBs), pBs, "C3.", alpha=0.1)
-    axp.errorbar([1], np.mean(pBs), yerr=np.std(pBs),
-                fmt="o", color="C3", capsize=5)
-    axp.set(xlim=[-0.5, 1.5], xticks=[],
-            ylim=[-0.5, 0.5], yticks=[-0.5, 0, 0.5],
-            ylabel="pearson coeff")
-    
-    fig.savefig(savename, bbox_inches="tight")
-
-
 if __name__=="__main__":
     parser = argparse.ArgumentParser()
 
