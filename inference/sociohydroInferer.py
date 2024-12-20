@@ -3,19 +3,47 @@ from sklearn import linear_model as lm
 from scipy import stats, optimize
 from infer_utils import *
 
+def linear(x, a, b):
+    return a * x + b
 
-def growth(x, a, b, c, form="exp"):
+def exp(x, a, b, c):
+    return a * np.exp(b * x) + c
+
+def fit_growth(x, y, form="exp"):
+    """
+    Fit a growth curve to data.
+
+    Parameters
+    ----------
+    x : array-like
+        Independent variable (time, etc.)
+    y : array-like
+        Dependent variable (population size, etc.)
+    form : str, {'exp', 'linear'}
+        Form of the growth curve.
+
+    Returns
+    -------
+    popt : array-like
+        Optimal parameters for the growth curve.
+    """
     form_list = ["exp", "linear"]
     
     if form.lower() not in form_list:
         raise ValueError("growth is either exp or linear")
     
     if form.lower() == "exp":
-        g = a * np.exp(b * x) + c
+        growth = exp
+        p0 = [1e-3, 1e-6, 0]
     elif form.lower() == "linear":
-        g = a * x + b
+        growth = linear
+        p0 = [1e-3, 1e-6]
     
-    return g
+    popt, pcov = optimize.curve_fit(growth, x, y,
+                                    p0=p0,
+                                    maxfev=int(1e5))
+    
+    return popt, np.sqrt(np.diag(pcov))
 
 
 class SociohydroInfer():
@@ -65,12 +93,14 @@ class SociohydroInfer():
     def __init__(self,
                  ϕ1: list,
                  ϕ2: list,
-                 x: list,
-                 t: list,
+                 xs: list,
+                 ts: list,
                  t_dim: int = 0,
                  diff_method: str = "savgol",
-                 periodic: bool = False):
-        if np.any([not isinstance(arg, list) for arg in [ϕ1, ϕ2, x, t]]):
+                 periodic: bool = False,
+                 masks = None
+                 ):
+        if np.any([not isinstance(arg, list) for arg in [ϕ1, ϕ2, xs, ts]]):
             raise TypeError("fields need to be given as lists")
             # we require fields to be given as a list where
             # each element comes from a specific region/county
@@ -81,11 +111,19 @@ class SociohydroInfer():
         self.ABts = [np.stack([np.moveaxis(fi1, t_dim, -1),
                                np.moveaxis(fi2, t_dim, -1)],
                                axis=-1) for fi1, fi2 in zip(ϕ1, ϕ2)]
-        self.xs = x
-        self.dxs = [eks[1] - eks[0] for eks in x]
-        self.ts = t
-        self.dts = [tee[1] - tee[0] for tee in t]
+        self.xs = xs
+        self.dxs = [x[1] - x[0] for x in xs]
+        self.ts = ts
+        self.dts = [t[1] - t[0] for t in ts]
         self.periodic = periodic
+
+        if masks is None:
+            masks = [np.full(True, ABt.shape[:2]) for ABt in self.ABts]
+        else:
+            if len(masks) != self.n_regions:
+                raise ValueError("Number of masks should be same as number of regions")
+        
+        self.masks = masks
 
         if diff_method.lower() not in self.diff_method_opts:
             raise ValueError(f"diff_method needs to be in {self.diff_method_opts}")
@@ -125,10 +163,7 @@ class SociohydroInfer():
         ABt_mean = np.nansum(ABt, axis=spatial_axes)
         g = []
         for phi in ABt_mean.T:
-            popt, pcovW = optimize.curve_fit(growth, t,
-                                             phi,
-                                             p0=[1e-3, 1e-6, 0],
-                                             maxfev=int(1e5))
+            popt, pcov = fit_growth(t, np.log(phi), form="linear")
             g.append(popt[1])
         
         return g
@@ -138,27 +173,15 @@ class SociohydroInfer():
 
     def test_train_split(self, train_pct,
                          window_length=5,
-                         mask=None,
                          ddt_minimum=0.0,
-                         consider_growth=True,
-                         growth_rates=[]):
+                         consider_growth=True):
 
         dAdt = []
         dBdt = []
         featA = []
         featB = []
+        growth_rates = []
 
-        if consider_growth:
-            if len(growth_rates) != self.n_regions:
-                raise ValueError("len(growth_rates) must be equal to the number of regions considered")
-            if np.any([len(g)!=2 for g in growth_rates]):
-                raise ValueError("need a growth rate for each population in all regions")
-        else:
-            growth_rates = np.zeros((self.n_regions, 2))
-
-        if mask is None:
-            # full slice for all dimensions
-            mask = np.full(self.ABts[0].shape[:2], True)
         # else:
         #     # create tuple of slices for the spatial dimensions
         #     slices = tuple(slice(start, stop) for start, stop in lims)
@@ -168,6 +191,12 @@ class SociohydroInfer():
         # loop over all datasets
         # for ABt, x, t in zip(self.ABts, self.xs, self.ts):
         for region in range(self.n_regions):
+            if consider_growth:
+                growth_rates.append(self.calc_growthRate(region))
+            else:
+                growth_rates.append(np.zeros(2))
+
+            growth_rates = np.zeros((self.n_regions, 2))
             features = self.calc_features(region, window_length=window_length)
             nfeat = features.shape[-1]
             ABt_dt   = self.differentiate(self.ts[region],
@@ -181,8 +210,8 @@ class SociohydroInfer():
             # if consider_growth:
             ABt_dt -= self.ABts[region] * growth_rates[region]
 
-            features = features[mask]
-            ABt_dt = ABt_dt[mask]
+            features = features[self.masks[region]]
+            ABt_dt = ABt_dt[self.masks[region]]
 
             large_ddt = np.where((np.sum(np.abs(ABt_dt[..., 0]), axis=-1) >= ddt_minimum) &
                                  (np.sum(np.abs(ABt_dt[..., 1]), axis=-1) >= ddt_minimum))
@@ -244,17 +273,44 @@ class SociohydroInfer():
             regressor="linear",
             alpha=0.1,
             window_length=5,
-            mask=None,
             ddt_minimum=0.0,
-            consider_growth=True,
-            growth_rates=[]):
-        
+            consider_growth=True):
+
+        """
+        Fits regression models to the dataset using specified parameters.
+
+        Parameters:
+            train_pct: (float)
+                The percentage of data to be used for training, ranging from 0 to 1.
+            regressor: (str, optional)
+                Type of regressor to use. Options are "linear", "ridge",
+                "elasticnet", "sgd", and "lasso". Default is "linear".
+            alpha: (float, optional)
+                Regularization strength; must be a positive float. Used by
+                "ridge", "elasticnet", and "lasso" regressors. Default is 0.1.
+            window_length: (int, optional)
+                Length of the window for smoothing operations. Default is 5.
+            ddt_minimum: (float, optional)
+                Minimum threshold for time derivatives. Default is 0.0.
+            consider_growth: (bool, optional)
+                Whether to consider growth rates in the fitting process. Default is True.
+
+        Returns:
+            fits: (tuple)
+                List of fitted regression models for datasets A and B
+            ddts: (tuple)
+                Dictionaries for datasets A and B containing train and test data for derivatives
+            feats: (tuple)
+                Dictionaries for datasets A and B containing train and test data for features
+            mse: (tuple)
+                List of mean squared errors for datasets A and B on test sets
+            growth_rates: (tuple)
+                Growth rates used during the fitting process
+        """
         dAdt, dBdt, featA, featB, growth_rates = self.test_train_split(train_pct,
                                                                        window_length=window_length,
-                                                                       mask=mask,
                                                                        ddt_minimum=ddt_minimum,
-                                                                       consider_growth=consider_growth,
-                                                                       growth_rates=growth_rates)
+                                                                       consider_growth=consider_growth)
 
         if regressor.lower() not in self.regressor_opts:
             raise ValueError(f"Regressor must be one of {self.regressor_opts}. Currently: " + regressor)
@@ -280,10 +336,10 @@ class SociohydroInfer():
         fitB = regB.fit(featB["train"], dBdt["train"])
 
         # pearson correlation coefficient
-        pearsonr_A = stats.pearsonr(dAdt["test"], fitA.predict(featA["test"])).statistic
-        pearsonr_B = stats.pearsonr(dBdt["test"], fitB.predict(featB["test"])).statistic
+        mseA = np.mean((dAdt["test"] - fitA.predict(featA["test"]))**2)
+        mseB = np.mean((dBdt["test"] - fitB.predict(featB["test"]))**2)
 
-        return fitA, fitB, dAdt, dBdt, featA, featB, pearsonr_A, pearsonr_B
+        return [fitA, fitB], [dAdt, dBdt], [featA, featB], [mseA, mseB], growth_rates
 
 
 class SociohydroInfer2D(SociohydroInfer):
@@ -336,9 +392,11 @@ class SociohydroInfer2D(SociohydroInfer):
                  t: list,
                  t_dim: int = 0,
                  diff_method: str = "savgol",
-                 periodic: bool = False):
+                 periodic: bool = False,
+                 masks = None):
         SociohydroInfer.__init__(self, ϕ1, ϕ2, x, t,
-                                 t_dim, diff_method, periodic)
+                                 t_dim, diff_method, periodic,
+                                 masks=masks)
         self.ys = y
         self.dys = [why[1] - why[0] for why in y]
 
@@ -532,7 +590,8 @@ class SociohydroInfer1D(SociohydroInfer):
                                  ϕ1, ϕ2, x, t,
                                  t_dim=t_dim,
                                  diff_method=diff_method,
-                                 periodic=periodic)
+                                 periodic=periodic,
+                                 masks=None)
     
     def calc_features(self, region, window_length=5):
         ABt = self.ABts[region]
