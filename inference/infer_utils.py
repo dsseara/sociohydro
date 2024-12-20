@@ -236,7 +236,7 @@ def get_data(file, spatial_scale=1000, sigma=2,
 
 
 def plot_coeffs(coef_df,
-                pearson_df=None,
+                mse_df=None,
                 savename=None,
                 coefs_true=None):
     fig, ax = plt.subplots(dpi=144, figsize=(4,2))
@@ -269,24 +269,22 @@ def plot_coeffs(coef_df,
         ax.plot(np.arange(nfeat) + 0.2, coefs_true[1],
                 "s", mfc="white", mec="C3", zorder=-1)
 
-    if pearson_df is not None:
-        pW = pearson_df.loc[pearson_df.demo == "W"]
-        pB = pearson_df.loc[pearson_df.demo == "B"]
+    if mse_df is not None:
+        mseW = mse_df.loc[mse_df.demo == "W"]
+        mseB = mse_df.loc[mse_df.demo == "B"]
     
         axp = ax.inset_axes([1.3, 0, 0.2, 1])
-        axp.plot([0] * len(pW), pW.coef, "C0.", alpha=0.1)
-        axp.errorbar([0], pW.coef.mean(),
-                     yerr=pW.coef.std(),
+        axp.plot([0] * len(mseW), mseW.coef, "C0.", alpha=0.1)
+        axp.errorbar([0], mseW.coef.mean(),
+                     yerr=mseW.coef.std(),
                      fmt="o", color="C0", capsize=5)
-        axp.plot([1] * len(pB), pB.coef, "C3.", alpha=0.1)
-        axp.errorbar([1], pB.coef.mean(),
-                     yerr=pB.coef.std(),
+        axp.plot([1] * len(mseB), mseB.coef, "C3.", alpha=0.1)
+        axp.errorbar([1], mseB.coef.mean(),
+                     yerr=mseB.coef.std(),
                      fmt="o", color="C3", capsize=5)
         axp.set(xlim=[-0.5, 1.5],
                 xticks=[],
-                ylim=[-1, 1],
-                yticks=[-1, 0, 1],
-                ylabel="pearson coeff")
+                ylabel="mean squared error")
     
     if savename is not None:
         fig.savefig(savename + "_inferredCoefs.pdf", bbox_inches="tight")
