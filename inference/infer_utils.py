@@ -202,6 +202,9 @@ def get_data(file, spatial_scale=1000, sigma=2,
     - housing
     - mask
     """
+    if not np.logical_xor(use_fill_frac, use_max_scaling):
+        raise ValueError(f"either use_fill_frac ({use_fill_frac}) or use_max_scaling ({use_max_scaling}) must be true")
+    
     w_grid = []
     b_grid = []
     t = []
