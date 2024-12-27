@@ -154,19 +154,22 @@ class SociohydroInfer():
 
         return dfdx
     
-    def calc_growthRate(self, region_id):
-        
-        ABt = self.ABts[region_id]
-        t = self.ts[region_id]
+    def calc_growthRates(self):
+        gs = []
+        for region_id in range(self.n_regions):
+            ABt = self.ABts[region_id]
+            t = self.ts[region_id]
+            mask = self.masks[region_id]
 
-        spatial_axes = tuple(range(0, ABt.ndim-2))
-        ABt_mean = np.nansum(ABt, axis=spatial_axes)
-        g = []
-        for phi in ABt_mean.T:
-            popt, pcov = fit_growth(t, np.log(phi), form="linear")
-            g.append(popt[1])
-        
-        return g
+            ABt_mean = np.nansum(ABt[mask], axis=0)
+            g = []
+            for phi in ABt_mean.T:
+                popt, pcov = fit_growth(t, np.log(phi), form="linear")
+                g.append(popt[0])
+            gs.append(g)
+            
+        return np.array(gs)
+       
 
     def calc_features(self, region, window_length=5):
         pass
@@ -180,23 +183,12 @@ class SociohydroInfer():
         dBdt = []
         featA = []
         featB = []
-        growth_rates = []
+        if consider_growth:
+            growth_rates = self.calc_growthRates()
+        else:
+            growth_rates = np.zeros(self.n_regions, 2)
 
-        # else:
-        #     # create tuple of slices for the spatial dimensions
-        #     slices = tuple(slice(start, stop) for start, stop in lims)
-        #     # add full slice for all other dimensions
-        #     slices += (slice(None),) * (self.ABts[0].ndim - len(slices))
-
-        # loop over all datasets
-        # for ABt, x, t in zip(self.ABts, self.xs, self.ts):
         for region in range(self.n_regions):
-            if consider_growth:
-                growth_rates.append(self.calc_growthRate(region))
-            else:
-                growth_rates.append(np.zeros(2))
-
-            growth_rates = np.zeros((self.n_regions, 2))
             features = self.calc_features(region, window_length=window_length)
             nfeat = features.shape[-1]
             ABt_dt   = self.differentiate(self.ts[region],
@@ -205,7 +197,6 @@ class SociohydroInfer():
                                           axis=-2,
                                           periodic=False,
                                           window_length=window_length)  # ∂/∂t
-            # growth_rates = self.calc_growthRate(region)
 
             # if consider_growth:
             ABt_dt -= self.ABts[region] * growth_rates[region]
@@ -274,7 +265,8 @@ class SociohydroInfer():
             alpha=0.1,
             window_length=5,
             ddt_minimum=0.0,
-            consider_growth=True):
+            consider_growth=True,
+            bounded=True):
 
         """
         Fits regression models to the dataset using specified parameters.
@@ -296,8 +288,8 @@ class SociohydroInfer():
                 Whether to consider growth rates in the fitting process. Default is True.
 
         Returns:
-            fits: (tuple)
-                List of fitted regression models for datasets A and B
+            coeffs: (tuple)
+                List of fitted regression coefficients for datasets A and B
             ddts: (tuple)
                 Dictionaries for datasets A and B containing train and test data for derivatives
             feats: (tuple)
@@ -312,34 +304,66 @@ class SociohydroInfer():
                                                                        ddt_minimum=ddt_minimum,
                                                                        consider_growth=consider_growth)
 
-        if regressor.lower() not in self.regressor_opts:
-            raise ValueError(f"Regressor must be one of {self.regressor_opts}. Currently: " + regressor)
+        # if regressor.lower() not in self.regressor_opts:
+        #     raise ValueError(f"Regressor must be one of {self.regressor_opts}. Currently: " + regressor)
         
-        if regressor.lower() == "linear":
-            regA = lm.LinearRegression()
-            regB = lm.LinearRegression()
-        elif regressor.lower() == "ridge":
-            regA = lm.Ridge(alpha=alpha)
-            regB = lm.Ridge(alpha=alpha)
-        elif regressor.lower() == "elasticnet":
-            regA = lm.ElasticNet(alpha=alpha, l1_ratio=0.5)
-            regB = lm.ElasticNet(alpha=alpha, l1_ratio=0.5)
-        elif regressor.lower() == "sgd":
-            regA = lm.SGDRegressor(loss="squared_error")
-            regB = lm.SGDRegressor(loss="squared_error")
-        elif regressor.lower() == "lasso":
-            regA = lm.Lasso(alpha=alpha)
-            regB = lm.Lasso(alpha=alpha)
+        # if regressor.lower() == "linear":
+        #     regA = lm.LinearRegression()
+        #     regB = lm.LinearRegression()
+        # elif regressor.lower() == "ridge":
+        #     regA = lm.Ridge(alpha=alpha)
+        #     regB = lm.Ridge(alpha=alpha)
+        # elif regressor.lower() == "elasticnet":
+        #     regA = lm.ElasticNet(alpha=alpha, l1_ratio=0.5)
+        #     regB = lm.ElasticNet(alpha=alpha, l1_ratio=0.5)
+        # elif regressor.lower() == "sgd":
+        #     regA = lm.SGDRegressor(loss="squared_error")
+        #     regB = lm.SGDRegressor(loss="squared_error")
+        # elif regressor.lower() == "lasso":
+        #     regA = lm.Lasso(alpha=alpha)
+        #     regB = lm.Lasso(alpha=alpha)
 
-        # perform fit
-        fitA = regA.fit(featA["train"], dAdt["train"])
-        fitB = regB.fit(featB["train"], dBdt["train"])
+        # # perform fit
+        # fitA = regA.fit(featA["train"], dAdt["train"])
+        # fitB = regB.fit(featB["train"], dBdt["train"])
 
-        # pearson correlation coefficient
-        mseA = np.mean((dAdt["test"] - fitA.predict(featA["test"]))**2)
-        mseB = np.mean((dBdt["test"] - fitB.predict(featB["test"]))**2)
+        if bounded:
+            # make sure T > 0 and Gamma < 0
+            lb = np.array([
+                0,          # T
+                -np.inf,    # kii
+                -np.inf,    # kij
+                -np.inf,    # Γ
+                -np.inf,    # νiii
+                -np.inf,    # νiij
+                -np.inf     # νijj
+            ])
+            ub = np.array([
+                np.inf,     # T
+                np.inf,     # kii
+                np.inf,     # kij
+                0,          # Γ
+                np.inf,     # νiii
+                np.inf,     # νiij
+                np.inf      # νijj
+            ])
+        else:
+            lb = -np.inf
+            ub = np.inf
+        
+        fitA = optimize.lsq_linear(featA["train"],
+                                   dAdt["train"],
+                                   bounds=(lb, ub))
+        fitB = optimize.lsq_linear(featB["train"],
+                                   dBdt["train"],
+                                   bounds=(lb, ub))
 
-        return [fitA, fitB], [dAdt, dBdt], [featA, featB], [mseA, mseB], growth_rates
+
+        # mean-squared errors
+        mseA = np.mean((dAdt["test"] - featA["test"] @ fitA.x)**2)
+        mseB = np.mean((dBdt["test"] - featB["test"] @ fitB.x)**2)
+
+        return [fitA.x, fitB.x], [dAdt, dBdt], [featA, featB], [mseA, mseB], growth_rates
 
 
 class SociohydroInfer2D(SociohydroInfer):
