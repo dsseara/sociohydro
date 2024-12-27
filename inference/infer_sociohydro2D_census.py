@@ -1,15 +1,12 @@
 import numpy as np
 import os
-import matplotlib.pyplot as plt
 from glob import glob
 import json
-import h5py
-from scipy import ndimage, interpolate
 from tqdm import tqdm
 import pandas as pd
 from datetime import datetime
 import argparse
-from inference.sociohydroInferer import *
+from sociohydroInferer import *
 from infer_utils import *
 
 feat_names = [
@@ -22,11 +19,23 @@ feat_names = [
     r"$\nu_{ijj}$"
 ]
 
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
+
 if __name__=="__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('-datafiles', nargs="+", type=str,
-                        help='path to hdf5 files with gridded data')
+    parser.add_argument('-datafolder', type=str,
+                        help='path to folder containing hdf5 files with gridded data')
+    parser.add_argument("-state_county", nargs="+", type=str,
+                        help="name of state and county to use for inference")
     parser.add_argument('-sigma', type=float, default=2.0,
                         help='size of gaussian to use when smoothing data')
     parser.add_argument('-nt', type=int, default=101,
@@ -37,9 +46,9 @@ if __name__=="__main__":
                         help='fraction of data to use for fitting, ∈ [0.0, 1.0)')
     parser.add_argument('-ntrials', type=int, default=10,
                         help='number of different train/test splits to train on')
-    parser.add_argument("-use_fill_frac", action="store_true",
+    parser.add_argument("-use_fill_frac", type=str2bool, default=False,
                         help="whether to use fill fraction as a feature")
-    parser.add_argument("-use_max_scaling", action="store_true",
+    parser.add_argument("-use_max_scaling", type=str2bool, default=True,
                         help="whether to use max scaling for features")
     parser.add_argument('-savefolder', type=str, default='.',
                         help='where to save output')
@@ -47,6 +56,9 @@ if __name__=="__main__":
                         help='name of file to save output')
 
     args = parser.parse_args()
+
+    if not np.logical_xor(args.use_fill_frac, args.use_max_scaling):
+        raise ValueError(f"either use_fill_frac ({args.use_fill_frac}) or use_max_scaling ({args.use_max_scaling}) must be true")
 
     ### set up save environment ###
     savename = os.path.join(args.savefolder, args.savename)
@@ -75,7 +87,8 @@ if __name__=="__main__":
     masks = []
     housings = []
 
-    for datafile in args.datafiles:
+    for sc in args.state_county:
+        datafile = os.path.join(args.datafolder, f"{sc}.hdf5")
         wb, x, y, t, housing, mask = get_data(datafile,
                                               sigma=args.sigma,
                                               use_fill_frac=args.use_fill_frac,
@@ -99,7 +112,7 @@ if __name__=="__main__":
                                 masks=masks)
     
     
-    coeffs = np.array([])
+    coeff_list = np.array([])
     coeff_names = np.array([])
     coeff_group = np.array([])
     # coeff_trial = np.array([])
@@ -109,11 +122,9 @@ if __name__=="__main__":
     ntrials = 30
     train_pct = 0.8
     for trial in tqdm(range(ntrials)):
-        fits, ddts, feats, mses, growth_rates = inferer.fit(train_pct,
-                                                        ddt_minimum=0.0,
-                                                        consider_growth=True)
-        coeffs = np.append(coeffs, list(fits[0].coef_))
-        coeffs = np.append(coeffs, list(fits[1].coef_))
+        coeffs, ddts, feats, mses, _ = inferer.fit(train_pct)
+        coeff_list = np.append(coeff_list, list(coeffs[0]))
+        coeff_list = np.append(coeff_list, list(coeffs[1]))
         coeff_names = np.append(coeff_names, feat_names*2)
         coeff_group = np.append(coeff_group, ["W"]*len(feat_names))
         coeff_group = np.append(coeff_group, ["B"]*len(feat_names))
@@ -121,29 +132,33 @@ if __name__=="__main__":
         mseB.append(mses[1])
     
     coef_df = pd.DataFrame({
-        "val": coeffs,
+        "val": coeff_list,
         "name": coeff_names,
         "demo": coeff_group,
         "trial": np.repeat(np.arange(ntrials), len(feat_names)*2)
     })
+    coef_df_mean = coef_df.groupby(["name", "demo"]).mean().reset_index()
 
     mse_df = pd.DataFrame({
-        "mseW": mseW,
-        "mseB": mseB,
-        "trial": np.arange(ntrials)
+    "demo": ["W"] * ntrials + ["B"] * ntrials,
+    "coef": mseW + mseB
+    })
+
+    growth_rates = inferer.calc_growthRates()
+    growth_df = pd.DataFrame({
+        "demo": ["W", "B"],
+        "growth_rate": growth_rates
     })
 
     # save outputs
     today = datetime.today().strftime("%Y-%m-%d")
     savename = os.path.join(args.savefolder, args.savename)
-
-    # coef_file = os.path.join(args.savefolder, today + f"_coefs")
-    coef_df.to_csv(f"{savename}_coefs.csv", index=False)
-    coef_df.groupby(["name", "demo"]).mean().reset_index().to_csv(f"{savename}_coefs_mean.csv",
-                                                                  index=False)
     
-    mse_file = os.path.join(args.savefolder, f"{savename}_mse")
+    coef_df.to_csv(f"{savename}_coefs.csv", index=False)
+    coef_df_mean.to_csv(f"{savename}_coefs_mean.csv",index=False)
     mse_df.to_csv(f"{savename}_mse.csv", index=False)
+    growth_df.to_csv(f"{savename}_growth.csv", index=False)
 
     plot_file = os.path.join(args.savefolder, today + f"_coefs")
-    plot_coeffs(coef_df, mse_df, savename=f"{savename}")
+    plot_coeffs(coef_df, mse_df, savename=savename)
+    plot_regression(coeffs, ddts, feats, savename=savename)
