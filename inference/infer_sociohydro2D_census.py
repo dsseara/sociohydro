@@ -144,7 +144,8 @@ if __name__=="__main__":
     "coef": mseW + mseB
     })
 
-    growth_rates = inferer.calc_growthRates()
+    # assume fitting only to 1 county
+    growth_rates = inferer.calc_growthRates()[0]
     growth_df = pd.DataFrame({
         "demo": ["W", "B"],
         "growth_rate": growth_rates
