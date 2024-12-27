@@ -293,34 +293,29 @@ def plot_coeffs(coef_df,
         fig.savefig(savename + "_inferredCoefs.pdf", bbox_inches="tight")
 
 
-def plot_regression(fit1, fit2, d1dt, d2dt, feat1, feat2,
+def plot_regression(
+        # fit1, fit2, d1dt, d2dt, feat1, feat2,
+        coefs, ddts, feats,
              savename=None):
     fig, ax = plt.subplots(dpi=144, figsize=(3, 3))
-    ax.plot(d1dt["test"],
-            fit1.predict(feat1["test"]),
-            "C0.", alpha=0.1, ms=1)
-    linreg1 = stats.linregress(d1dt["test"], fit1.predict(feat1["test"]))
-    ax.axline([0, linreg1.intercept], slope=linreg1.slope,
-              color="C0", ls="--", zorder=-1,
-              label=f"slope={np.round(linreg1.slope, decimals=2)}")
+    colors = ["C0", "C3"]
     
-    ax.plot(d2dt["test"],
-            fit2.predict(feat2["test"]),
-            "C3.", alpha=0.1, ms=1)
-    linreg2 = stats.linregress(d2dt["test"], fit2.predict(feat2["test"]))
-    ax.axline([0, linreg2.intercept], slope=linreg2.slope,
-              color="C3", ls="--", zorder=-1,
-              label=f"slope={np.round(linreg2.slope, decimals=2)}")
-    
+    for coef, ddt, feat, color in zip(coefs, ddts, feats, colors):
+        ax.plot(ddt["test"], feat["test"] @ coef,
+                color=color, alpha=0.1, ms=1, marker=".", lw=0)
+        linreg = stats.linregress(ddt["test"], feat["test"] @ coef)
+        ax.axline([0, linreg.intercept], slope=linreg.slope,
+                  color=color, ls="--", zorder=-1,
+                  label=f"slope={np.round(linreg.slope, decimals=2)}")    
 
     ax.ticklabel_format(axis="both", style="sci", scilimits=(0, 0), useMathText=True)
+    xymin = 1.1 * np.min([ddt["test"].min() for ddt in ddts])
+    xymax = 1.1 * np.max([ddt["test"].max() for ddt in ddts])
     ax.set(
         xlabel=r"$\dot{\phi}_i$ true",
         ylabel=r"$\dot{\phi}_i$ prediction",
-        xlim=[1.1 * np.min([d1dt["test"].min(), d2dt["test"].min()]),
-            1.1 * np.max([d1dt["test"].max(), d2dt["test"].max()])],
-        ylim=[1.1 * np.min([d1dt["test"].min(), d2dt["test"].min()]),
-            1.1 * np.max([d1dt["test"].max(), d2dt["test"].max()])]
+        xlim=[xymin, xymax],
+        ylim=[xymin, xymax]
     )
 
     ax.axline([0, 0], slope=1, ls="--", color="0.8", zorder=-1)
