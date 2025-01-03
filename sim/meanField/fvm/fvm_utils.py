@@ -130,6 +130,29 @@ def make_mesh(data, x_grid, y_grid, crs,
     return mesh, simple_boundary, geo_file_contents
 
 
+def gdf_to_mesh(gdf, buffer, simplify, cellsize):
+    """
+    Start from geodataframe, create fipy mesh
+    """
+    
+    simple_boundary = make_simple_boundary(gdf, buffer, simplify)
+    x, y = get_coords(simple_boundary)
+    mesh, geo_file_contents = make_mesh(x, y, cellsize)
+
+    return mesh, simple_boundary, geo_file_contents
+
+
+def mesh_to_gdf(mesh, crs):
+    """
+    State from fipy mesh, create geodataframe
+    """
+    cells = np.moveaxis(mesh.vertexCoords[:, mesh._orderedCellVertexIDs],
+                        (0, 1, 2), (2, 1, 0))
+    polys = [geometry.Polygon(cell) for cell in cells]
+    gdf = gpd.GeoDataFrame(geometry=polys)
+    gdf.crs = crs
+    return gdf
+
 
 def get_data(file, spatial_scale=1000, sigma=2,
              use_fill_frac=True, use_max_scaling=False):
