@@ -7,9 +7,17 @@ import numpy as np
 import argparse
 import h5py
 from scipy import interpolate, ndimage
+from tobler.area_weighted import area_interpolate
 
 from fvm_utils import *
 
+def str_to_bool(s):
+    if s.lower() in ["true", "t", "yes", "y", "1"]:
+        return True
+    elif s.lower() in ["false", "f", "no", "n", "0"]:
+        return False
+    else:
+        raise ValueError("String not recognized as boolean")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -21,7 +29,7 @@ if __name__ == "__main__":
                         help="total duration of simulation")
     parser.add_argument("-nt", type=int, default=100,
                         help="number of time points to save")
-    parser.add_argument("-timestepper", type=str, default="exp",
+    parser.add_argument("-timestepper", type=str, default="linear",
                         choices=["exp", "linear"],
                         help="whether to use exponentially increasing time steps or the same time step")
     parser.add_argument("-dt", type=float, default=1e-3,
@@ -66,19 +74,17 @@ if __name__ == "__main__":
                         help="growth terms for Black population")
     
     # parameters for simulation
-    # parser.add_argument("-capacityType", type=str, default="local",
-    #                     choices=["uniform", "local"],
-    #                     help="how to calculate the carrying capacities")
     parser.add_argument("-buffer", type=float, default=1.0,
                         help="buffer for boundary simplification")
     parser.add_argument("-simplify", type=float, default=1.0,
                         help="simplify parameter for boundary simplification")
     parser.add_argument("-cellsize", type=float, default=3,
                         help="typical size of cells in mesh")
-    parser.add_argument("-use_fill_frac", type=bool, default=True,
+    parser.add_argument("-use_fill_frac", type=str_to_bool, default=True,
                         help="use local scale for population normalization")
-    parser.add_argument("-use_max_scaling", type=bool, default=False,
+    parser.add_argument("-use_max_scaling", type=str_to_bool, default=False,
                         help="use global scale for population normalization")
+    
     # parameters for saving output
     parser.add_argument("-savefolder", type=str, default=".",
                         help="path to folder to save output")
@@ -134,12 +140,53 @@ if __name__ == "__main__":
     # final condition
     wbf = wb(2020)
 
-    # create mesh
+    # create meshes for interpolation
     crs = "ESRI:102003"  # all cases fall into this CRS
+
+    # create square mesh
+    dx = x[1, 1] - x[0, 0]
+    dy = y[1, 1] - y[0, 0]
+    ny, nx = x.shape
+    grid = fp.Grid2D(dx=dx, dy=dy, nx=nx, ny=ny) + ((x.min(), ), (y.min(), ))
+    
+    # put all data into geodataframes
+    grid_gdf = mesh_to_gdf(grid, crs=crs)
+    if args.use_max_scaling:
+        grid_gdf["w0"]  = (wb0[0] * housing[mask].max()).ravel()
+        grid_gdf["wf"]  = (wbf[0] * housing[mask].max()).ravel()
+        grid_gdf["b0"]  = (wb0[1] * housing[mask].max()).ravel()
+        grid_gdf["bf"]  = (wbf[1] * housing[mask].max()).ravel()
+    elif args.use_fill_frac:
+        grid_gdf["w0"]  = (wb0[0] * housing).ravel()
+        grid_gdf["wf"]  = (wbf[0] * housing).ravel()
+        grid_gdf["b0"]  = (wb0[1] * housing).ravel()
+        grid_gdf["bf"]  = (wbf[1] * housing).ravel()
+    
+    grid_gdf["housing"] = housing.ravel()
+    grid_gdf["mask"] = mask.astype(int).ravel()
+
+    # create mesh
     mesh, simple_boundary, geo_file_contents = make_mesh(wb0, x, y, crs,
                                                          args.buffer,
                                                          args.simplify,
                                                          args.cellsize)
+    
+    mesh_gdf = mesh_to_gdf(mesh, crs=crs)
+    interp = area_interpolate(grid_gdf, mesh_gdf,
+                              extensive_variables=["w0", "wf", "b0", "bf", "housing"],
+                              intensive_variables=["mask"])
+    
+    if args.use_fill_frac:
+        interp["w0"] /= interp["housing"]
+        interp["wf"] /= interp["housing"]
+        interp["b0"] /= interp["housing"]
+        interp["bf"] /= interp["housing"]
+    elif args.use_max_scaling:
+        interp["w0"] /= interp[interp["mask"] > 0]["housing"].max()
+        interp["wf"] /= interp[interp["mask"] > 0]["housing"].max()
+        interp["b0"] /= interp[interp["mask"] > 0]["housing"].max()
+        interp["bf"] /= interp[interp["mask"] > 0]["housing"].max()
+
 
     # perform interpolation from grid points to cell centers
     grid_points = np.array([[x, y] for x, y in zip(x.ravel(),
@@ -147,35 +194,51 @@ if __name__ == "__main__":
     cell_points = np.array([[x, y] for x, y in zip(mesh.cellCenters.value[0],
                                                    mesh.cellCenters.value[1])])
     
-    ϕW0_cell = interpolate.griddata(grid_points,
-                                    np.nan_to_num(wb0.ravel(), nan=1e-3),
-                                    cell_points,
-                                    fill_value=1e-3)
-    ϕWf_cell = interpolate.griddata(grid_points,
-                                    np.nan_to_num(wbf.ravel(), nan=1e-3),
-                                    cell_points,
-                                    fill_value=1e-3)
+    # ϕW0_cell = interpolate.griddata(grid_points,
+    #                                 np.nan_to_num(wb0[0].ravel(), nan=1e-3),
+    #                                 cell_points,
+    #                                 fill_value=1e-3)
+    # ϕWf_cell = interpolate.griddata(grid_points,
+    #                                 np.nan_to_num(wbf[0].ravel(), nan=1e-3),
+    #                                 cell_points,
+    #                                 fill_value=1e-3)
 
-    ϕB0_cell = interpolate.griddata(grid_points,
-                                    np.nan_to_num(wb0.ravel(), nan=1e-3),
-                                    cell_points,
-                                    fill_value=1e-3)
-    ϕBf_cell = interpolate.griddata(grid_points,
-                                    np.nan_to_num(wbf.ravel(), nan=1e-3),
-                                    cell_points,
-                                    fill_value=1e-3)
+    # ϕB0_cell = interpolate.griddata(grid_points,
+    #                                 np.nan_to_num(wb0[1].ravel(), nan=1e-3),
+    #                                 cell_points,
+    #                                 fill_value=1e-3)
+    # ϕBf_cell = interpolate.griddata(grid_points,
+    #                                 np.nan_to_num(wbf[1].ravel(), nan=1e-3),
+    #                                 cell_points,
+    #                                 fill_value=1e-3)
+    
+    # housing_cell = interpolate.griddata(grid_points,
+    #                                     np.nan_to_num(housing.ravel(), nan=1e-3),
+    #                                     cell_points,
+    #                                     fill_value=1e-3)
+    
+    # mask_cell = interpolate.griddata(grid_points,
+    #                                  np.nan_to_num(mask.ravel(), nan=1e-3),
+    #                                  cell_points,
+    #                                  fill_value=1e-3)
+    
+
     ###############
 
     ### save things common to all time-points ###
     group_name = "common"
-    datadict = {"cell_centers": cell_points,
-                "phiW_initial": ϕW0_cell,
-                "phiB_initial": ϕB0_cell,
-                "phiW_final": ϕWf_cell,
-                "phiB_final": ϕBf_cell}
-                # "corr_length": ξ,
-                # "corr_length_var": ξvar}
+    datadict = {
+        "cell_centers": cell_points,
+        "phiW_initial": interp["w0"].values,
+        "phiB_initial": interp["b0"].values,
+        "phiW_final": interp["wf"].values,
+        "phiB_final": interp["bf"].values,
+        "housing": interp["housing"].values,
+        "mask": interp["mask"].values
+    }
     dump(h5file, group_name, datadict)
+    geojsonfile = os.path.join(args.savefolder, args.filename + ".geojson")
+    interp.to_file(geojsonfile, driver="GeoJSON")
     ###############
 
     ### build simulation ###
@@ -204,8 +267,10 @@ if __name__ == "__main__":
     ϕB = fp.CellVariable(name=r"phiB", mesh=mesh, hasOld=True)
     μB = fp.CellVariable(name=r"muB", mesh=mesh, hasOld=True)
 
-    ϕW[:] = ϕW0_cell
-    ϕB[:] = ϕB0_cell
+    # ϕW[:] = ϕW0_cell
+    ϕW[:] = interp["w"]
+    # ϕB[:] = ϕB0_cell
+    ϕB[:] = interp["b"]
     ϕ0 = 1 - ϕW - ϕB
 
     mobilityW = ϕW * ϕ0
@@ -249,26 +314,11 @@ if __name__ == "__main__":
     t_save = np.linspace(0, duration, nt+1)
 
     elapsed = 0
-    flag = 1
+    snapshot = 1
     dt = args.dt
     ###############
 
     ### start simulation ###
-    # if args.timestepper == "exp":
-    #     while elapsed < duration:
-    #         dt = min(50, np.exp(dexp))
-    #         eq.solve(dt=dt)
-    #         elapsed += dt
-    #         dexp += 0.01
-    #         print(f"t={elapsed:0.2f} / {duration}", end="\r")
-    #         if elapsed >= t_save[flag]:
-    #             gname = f"n{flag:06d}"
-    #             datadict = {"t": t_save[flag],
-    #                         "phiW": ϕW.value,
-    #                         "phiB": ϕB.value}
-    #             dump(h5file, gname, datadict)
-    #             flag += 1
-    # elif args.timestepper == "linear":
     while elapsed < duration:
         for var in [ϕW, μW, ϕB, μB]:
             var.updateOld()
@@ -277,41 +327,29 @@ if __name__ == "__main__":
             res = eq.sweep(dt=dt)
         # eq.solve(dt=dt)
         elapsed += dt
-        if elapsed >= t_save[flag]:
+        if elapsed >= t_save[snapshot]:
             print(f"t={elapsed:0.2f} / {duration}", end="\r")
-            mseW = np.mean((ϕWf_cell - ϕW.value)**2)
-            mseB = np.mean((ϕBf_cell - ϕB.value)**2)
+            mseW = np.mean((interp["wf"].values - ϕW.value)**2)
+            mseB = np.mean((interp["bf"].values - ϕB.value)**2)
             # save to hdf5
-            gname = f"n{flag:06d}"
-            datadict = {"t": t_save[flag],
+            gname = f"n{snapshot:06d}"
+            datadict = {"t": t_save[snapshot],
                         "phiW": ϕW.value,
                         "phiB": ϕB.value,
                         "mseW": mseW,
                         "mseB": mseB}
             dump(h5file, gname, datadict)
             # save fipy
-            fipyfile = f"n{flag:06d}.fipy"
-            write([ϕW, ϕB, t_save[flag]], os.path.join(fipyfolder, fipyfile))
-            flag += 1
+            fipyfile = f"n{snapshot:06d}.fipy"
+            write([ϕW, ϕB, t_save[snapshot]], os.path.join(fipyfolder, fipyfile))
+            snapshot += 1
     ###############
 
     ### final output ###
-    mseW = np.mean((ϕWf_cell - ϕW.value)**2)
-    mseB = np.mean((ϕBf_cell - ϕB.value)**2)
+    mseW = np.mean((interp["wf"].values - ϕW.value)**2)
+    mseB = np.mean((interp["bf"].values - ϕB.value)**2)
 
     print(f"Final mean-square error:")
     print(f"White: {mseW:0.4f}")
     print(f"Black: {mseB:0.4f}")
     ###############
-
-    # with h5py.File(h5file, "a") as d:
-    #     d.create_dataset("t_array", data=t_save)
-    #     d.create_dataset("phiW_array", data=ϕW_array)
-    #     d.create_dataset("phiB_array", data=ϕB_array)
-    #     d.create_dataset("cell_centers", data=cell_points)
-    #     d.create_dataset("phiW_2020", data=ϕWf_cell)
-    #     d.create_dataset("phiB_2020", data=ϕBf_cell)
-    #     d.create_dataset("mse_white", data=mseW)
-    #     d.create_dataset("mse_black", data=mseB)
-    #     d.create_dataset("corr_length", data=ξ)
-    #     d.create_dataset("corr_length_var", data=ξvar)
