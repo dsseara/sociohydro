@@ -168,10 +168,14 @@ def get_data(file, spatial_scale=1000, sigma=2,
             mask = ~g['county_mask'][:].astype(bool)
             area_mask = g["mask"][:].astype(bool)
 
-            w_grid.append(np.ma.array(ndimage.gaussian_filter(g['white_grid'][:], sigma=sigma),
-                                      mask=area_mask, fill_value=np.nan).filled())
-            b_grid.append(np.ma.array(ndimage.gaussian_filter(g['black_grid'][:], sigma=sigma),
-                                      mask=area_mask, fill_value=np.nan).filled())
+            w_grid.append(
+                np.ma.array(ndimage.gaussian_filter(np.nan_to_num(g['white_grid'][:]), sigma=sigma),
+                                      mask=area_mask, fill_value=np.nan).filled()
+            )
+            b_grid.append(
+                np.ma.array(ndimage.gaussian_filter(np.nan_to_num(g['black_grid'][:]), sigma=sigma),
+                                      mask=area_mask, fill_value=np.nan).filled()
+            )
     
     t = np.array(t)
     wb = np.stack([w_grid, b_grid], axis=1) * 100 # use units of 1/dam^2
@@ -180,6 +184,7 @@ def get_data(file, spatial_scale=1000, sigma=2,
     if use_fill_frac:
         # Convert population to occupation fraction
         wb /= housing
+        wb[..., housing == 0] = 0 # Set fill fraction to 0 if no housing
     elif use_max_scaling:
         # Use min-max scaling
         wb /= np.max(housing[mask])
@@ -305,7 +310,8 @@ def plot_mesh(data, mesh, ax,
               cmap=plt.cm.viridis,
               vmin=None, vmax=None,
               colorbar=True,
-              colorbar_title=""):
+              colorbar_title="",
+              alpha=1):
     
     xmin, ymin = mesh.extents["min"]
     xmax, ymax = mesh.extents["max"]
@@ -314,6 +320,7 @@ def plot_mesh(data, mesh, ax,
                                                  (0, 1, 2), (2, 1, 0)))
     norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
     col.set_color(cmap(norm(data)))
+    col.set_alpha(alpha)
     ax.add_collection(col)
     ax.set(xlim=[xmin, xmax],
            ylim=[ymin, ymax])
@@ -327,6 +334,8 @@ def plot_mesh(data, mesh, ax,
         cbar = plt.colorbar(sm, cax=cax, ax=ax,
                             ticks=[vmin, vmean, vmax])
         cbar.ax.set_ylabel(colorbar_title, rotation=-90)
+
+    return col, cmap, norm
 
 
 
