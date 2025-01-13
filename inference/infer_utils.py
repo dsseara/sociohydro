@@ -217,10 +217,14 @@ def get_data(file, spatial_scale=1000, sigma=2,
             mask = ~g['county_mask'][:].astype(bool)
             area_mask = g["mask"][:].astype(bool)
 
-            w_grid.append(np.ma.array(ndimage.gaussian_filter(g['white_grid'][:], sigma=sigma),
-                                      mask=area_mask, fill_value=np.nan).filled())
-            b_grid.append(np.ma.array(ndimage.gaussian_filter(g['black_grid'][:], sigma=sigma),
-                                      mask=area_mask, fill_value=np.nan).filled())
+            w_grid.append(
+                np.ma.array(ndimage.gaussian_filter(np.nan_to_num(g['white_grid'][:]), sigma=sigma),
+                            mask=area_mask, fill_value=np.nan).filled()
+            )
+            b_grid.append(
+                np.ma.array(ndimage.gaussian_filter(np.nan_to_num(g['black_grid'][:]), sigma=sigma),
+                            mask=area_mask, fill_value=np.nan).filled()
+            )
     
     t = np.array(t)
     wb = np.stack([w_grid, b_grid], axis=1) * 100 # use units of 1/dam^2
