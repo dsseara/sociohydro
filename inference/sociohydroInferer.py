@@ -351,11 +351,11 @@ class SociohydroInfer():
             lb = -np.inf
             ub = np.inf
         
-        fitA = optimize.lsq_linear(featA["train"],
-                                   dAdt["train"],
+        fitA = optimize.lsq_linear(featA["train"].astype(np.float64),
+                                   dAdt["train"].astype(np.float64),
                                    bounds=(lb, ub))
-        fitB = optimize.lsq_linear(featB["train"],
-                                   dBdt["train"],
+        fitB = optimize.lsq_linear(featB["train"].astype(np.float64),
+                                   dBdt["train"].astype(np.float64),
                                    bounds=(lb, ub))
 
 
