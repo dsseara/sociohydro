@@ -3,6 +3,7 @@ import json
 from glob import glob
 import fipy as fp
 from fipy.tools.dump import write, read
+from fipy.tools import numerix as nx
 import numpy as np
 import argparse
 import h5py
@@ -136,9 +137,9 @@ if __name__ == "__main__":
                                           use_fill_frac=args.use_fill_frac,
                                           use_max_scaling=args.use_max_scaling)
     # initial condition 
-    wb0 = wb(1990)
+    wb0 = wb(t.min() + 10)
     # final condition
-    wbf = wb(2020)
+    wbf = wb(t.max())
 
     # create meshes for interpolation
     crs = "ESRI:102003"  # all cases fall into this CRS
@@ -152,10 +153,11 @@ if __name__ == "__main__":
     # put all data into geodataframes
     grid_gdf = mesh_to_gdf(grid, crs=crs)
     if args.use_max_scaling:
-        grid_gdf["w0"]  = (wb0[0] * housing[mask].max()).ravel()
-        grid_gdf["wf"]  = (wbf[0] * housing[mask].max()).ravel()
-        grid_gdf["b0"]  = (wb0[1] * housing[mask].max()).ravel()
-        grid_gdf["bf"]  = (wbf[1] * housing[mask].max()).ravel()
+        max_housing = housing[mask].max()
+        grid_gdf["w0"]  = (wb0[0] * max_housing).ravel()
+        grid_gdf["wf"]  = (wbf[0] * max_housing).ravel()
+        grid_gdf["b0"]  = (wb0[1] * max_housing).ravel()
+        grid_gdf["bf"]  = (wbf[1] * max_housing).ravel()
     elif args.use_fill_frac:
         grid_gdf["w0"]  = (wb0[0] * housing).ravel()
         grid_gdf["wf"]  = (wbf[0] * housing).ravel()
@@ -177,16 +179,22 @@ if __name__ == "__main__":
                               intensive_variables=["mask"])
     
     if args.use_fill_frac:
-        interp["w0"] /= interp["housing"]
-        interp["wf"] /= interp["housing"]
-        interp["b0"] /= interp["housing"]
-        interp["bf"] /= interp["housing"]
+        interp["w0"] /= interp["housing"] * 1.1
+        interp["wf"] /= interp["housing"] * 1.1
+        interp["b0"] /= interp["housing"] * 1.1
+        interp["bf"] /= interp["housing"] * 1.1
+        # set fill fractions to zero where housing is zero
+        zero_housing = (interp["housing"] == 0).values
+        interp.loc[zero_housing, "w0"] = 0
+        interp.loc[zero_housing, "wf"] = 0
+        interp.loc[zero_housing, "b0"] = 0
+        interp.loc[zero_housing, "bf"] = 0
     elif args.use_max_scaling:
-        interp["w0"] /= interp[interp["mask"] > 0]["housing"].max()
-        interp["wf"] /= interp[interp["mask"] > 0]["housing"].max()
-        interp["b0"] /= interp[interp["mask"] > 0]["housing"].max()
-        interp["bf"] /= interp[interp["mask"] > 0]["housing"].max()
-
+        max_housing = interp[interp["mask"] > 0]["housing"].max() * 1.1
+        interp["w0"] /= max_housing
+        interp["wf"] /= max_housing
+        interp["b0"] /= max_housing
+        interp["bf"] /= max_housing
 
     # perform interpolation from grid points to cell centers
     grid_points = np.array([[x, y] for x, y in zip(x.ravel(),
@@ -268,9 +276,14 @@ if __name__ == "__main__":
     μB = fp.CellVariable(name=r"muB", mesh=mesh, hasOld=True)
 
     # ϕW[:] = ϕW0_cell
-    ϕW[:] = interp["w"]
+    ϕW.setValue(interp["w0"])
+    ϕW.setValue(1e-2, where=ϕW<=1e-2)
+    ϕW.setValue(1-1e-2, where=ϕW>=1-1e-2)
     # ϕB[:] = ϕB0_cell
-    ϕB[:] = interp["b"]
+    ϕB.setValue(interp["b0"])
+    ϕB.setValue(1e-2, where=ϕB<=1e-2)
+    ϕB.setValue(1-1e-2, where=ϕB>=1-1e-2)
+
     ϕ0 = 1 - ϕW - ϕB
 
     mobilityW = ϕW * ϕ0
