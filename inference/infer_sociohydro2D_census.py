@@ -88,6 +88,7 @@ if __name__=="__main__":
     housings = []
 
     for sc in args.state_county:
+        print(sc)
         datafile = os.path.join(args.datafolder, f"{sc}.hdf5")
         wb, x, y, t, housing, mask = get_data(datafile,
                                               sigma=args.sigma,
@@ -145,10 +146,11 @@ if __name__=="__main__":
     })
 
     # assume fitting only to 1 county
-    growth_rates = inferer.calc_growthRates()[0]
+    growth_rates = inferer.calc_growthRates()
     growth_df = pd.DataFrame({
-        "demo": ["W", "B"],
-        "growth_rate": growth_rates
+        "demo": ["W", "B"] * len(args.state_county),
+        "growth_rate": growth_rates.ravel(),
+        "state_county": np.repeat(args.state_county, 2)
     })
 
     # save outputs
