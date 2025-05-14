@@ -120,7 +120,7 @@ if __name__=="__main__":
     mseW = []
     mseB = []
 
-    ntrials = 30
+    ntrials = args.ntrials
     train_pct = 0.8
     for trial in tqdm(range(ntrials)):
         coeffs, ddts, feats, mses, _ = inferer.fit(train_pct)

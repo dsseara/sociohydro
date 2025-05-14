@@ -4,6 +4,7 @@ from glob import glob
 import fipy as fp
 from fipy.tools.dump import write, read
 from fipy.tools import numerix as nx
+from fipy.solvers.scipy import LinearLUSolver
 import numpy as np
 import argparse
 import h5py
@@ -85,6 +86,8 @@ if __name__ == "__main__":
                         help="use local scale for population normalization")
     parser.add_argument("-use_max_scaling", type=str_to_bool, default=False,
                         help="use global scale for population normalization")
+    parser.add_argument("-square", type=str_to_bool, default=True,
+                        help="use square mesh for interpolation")
     
     # parameters for saving output
     parser.add_argument("-savefolder", type=str, default=".",
@@ -100,6 +103,7 @@ if __name__ == "__main__":
     if not os.path.exists(args.savefolder):
         # ensure savefolder is made
         os.makedirs(args.savefolder)
+        os.makedirs(fipyfolder)
     else:
         # delete files in savefolder
         files = glob(os.path.join(args.savefolder, args.filename + "*"))
@@ -147,8 +151,8 @@ if __name__ == "__main__":
     # create square mesh
     dx = x[1, 1] - x[0, 0]
     dy = y[1, 1] - y[0, 0]
-    ny, nx = x.shape
-    grid = fp.Grid2D(dx=dx, dy=dy, nx=nx, ny=ny) + ((x.min(), ), (y.min(), ))
+    # ny, nx = x.shape
+    grid = fp.Grid2D(dx=dx, dy=dy, nx=x.shape[1], ny=x.shape[0]) + ((x.min(), ), (y.min(), ))
     
     # put all data into geodataframes
     grid_gdf = mesh_to_gdf(grid, crs=crs)
@@ -171,7 +175,8 @@ if __name__ == "__main__":
     mesh, simple_boundary, geo_file_contents = make_mesh(wb0, x, y, crs,
                                                          args.buffer,
                                                          args.simplify,
-                                                         args.cellsize)
+                                                         args.cellsize,
+                                                         square=args.square)
     
     mesh_gdf = mesh_to_gdf(mesh, crs=crs)
     interp = area_interpolate(grid_gdf, mesh_gdf,
@@ -190,7 +195,8 @@ if __name__ == "__main__":
         interp.loc[zero_housing, "b0"] = 0
         interp.loc[zero_housing, "bf"] = 0
     elif args.use_max_scaling:
-        max_housing = interp[interp["mask"] > 0]["housing"].max() * 1.1
+        # max_housing = interp[interp["mask"] > 0]["housing"].max() * 1.1
+        max_housing = interp["housing"].max() * 1.1
         interp["w0"] /= max_housing
         interp["wf"] /= max_housing
         interp["b0"] /= max_housing
@@ -201,36 +207,6 @@ if __name__ == "__main__":
                                                    y.ravel())])
     cell_points = np.array([[x, y] for x, y in zip(mesh.cellCenters.value[0],
                                                    mesh.cellCenters.value[1])])
-    
-    # ϕW0_cell = interpolate.griddata(grid_points,
-    #                                 np.nan_to_num(wb0[0].ravel(), nan=1e-3),
-    #                                 cell_points,
-    #                                 fill_value=1e-3)
-    # ϕWf_cell = interpolate.griddata(grid_points,
-    #                                 np.nan_to_num(wbf[0].ravel(), nan=1e-3),
-    #                                 cell_points,
-    #                                 fill_value=1e-3)
-
-    # ϕB0_cell = interpolate.griddata(grid_points,
-    #                                 np.nan_to_num(wb0[1].ravel(), nan=1e-3),
-    #                                 cell_points,
-    #                                 fill_value=1e-3)
-    # ϕBf_cell = interpolate.griddata(grid_points,
-    #                                 np.nan_to_num(wbf[1].ravel(), nan=1e-3),
-    #                                 cell_points,
-    #                                 fill_value=1e-3)
-    
-    # housing_cell = interpolate.griddata(grid_points,
-    #                                     np.nan_to_num(housing.ravel(), nan=1e-3),
-    #                                     cell_points,
-    #                                     fill_value=1e-3)
-    
-    # mask_cell = interpolate.griddata(grid_points,
-    #                                  np.nan_to_num(mask.ravel(), nan=1e-3),
-    #                                  cell_points,
-    #                                  fill_value=1e-3)
-    
-
     ###############
 
     ### save things common to all time-points ###
@@ -289,14 +265,14 @@ if __name__ == "__main__":
     mobilityW = ϕW * ϕ0
     πW = κWW * ϕW + κWB * ϕB + νWWW * ϕW * ϕW + νWWB * ϕW * ϕB + νWBB * ϕB * ϕB
     dπWdϕW = κWW + 2 * νWWW * ϕW + νWWB * ϕB
-    μW_taylorExpand = -πW + TW * (np.log(ϕW) - np.log(ϕ0))
+    μW_taylorExpand = -πW + TW * (nx.log(ϕW) - nx.log(ϕ0))
     dμWdϕW = -dπWdϕW + TW * (1 - ϕB) / (ϕW * ϕ0)
     SW = rW[0] + rW[1] * ϕW + rW[2] * ϕB + rW[3] * ϕW * ϕW + rW[4] * ϕW * ϕB + rW[5] * ϕB * ϕB
     
     mobilityB = ϕB * ϕ0
     πB = κBW * ϕW + κBB * ϕB + νBWW * ϕW * ϕW + νBWB * ϕW * ϕB + νBBB * ϕB * ϕB
     dπBdϕB = κBB + νBWB * ϕW + 2 * νBBB * ϕB
-    μB_taylorExpand = -πB + TB * (np.log(ϕB) - np.log(ϕ0))
+    μB_taylorExpand = -πB + TB * (nx.log(ϕB) - nx.log(ϕ0))
     dμBdϕB = -dπBdϕB + TB * (1 - ϕW) / (ϕB * ϕ0)
     SB = rB[0] + rB[1] * ϕW + rB[2] * ϕB + rB[3] * ϕW * ϕW + rB[4] * ϕW * ϕB + rB[5] * ϕB * ϕB
     
@@ -327,18 +303,51 @@ if __name__ == "__main__":
     t_save = np.linspace(0, duration, nt+1)
 
     elapsed = 0
-    snapshot = 1
+    snapshot = 0
     dt = args.dt
     ###############
 
     ### start simulation ###
+    # save initial condition
+    gname = f"n{snapshot:06d}"
+    datadict = {"t": t_save[snapshot],
+                "phiW": ϕW.value,
+                "phiB": ϕB.value}
+    dump(h5file, gname, datadict)
+    # save fipy
+    fipyfile = f"n{snapshot:06d}.fipy"
+    write([ϕW, ϕB, t_save[snapshot]], os.path.join(fipyfolder, fipyfile))
+    snapshot += 1
+
+    print('starting main loop')
     while elapsed < duration:
-        for var in [ϕW, μW, ϕB, μB]:
-            var.updateOld()
-        res = 1e10
-        while res > 1e-5:
-            res = eq.sweep(dt=dt)
-        # eq.solve(dt=dt)
+        print(f"{elapsed:0.3f}", end="\r")
+        try:
+            for var in [ϕW, μW, ϕB, μB]:
+                var.updateOld()
+            res = 1e10
+            while res > 1e-5:
+                res = eq.sweep(dt=dt)
+            elapsed += dt
+        except RuntimeError:
+            print("caught error, attempting to fix...")
+            if (ϕW.value <= 0).any():
+                print("ϕW too small")
+                ϕW.setValue(1e-2, where=ϕW.value <= 0)
+            if (ϕB.value <= 0).any():
+                print("ϕB too small")
+                ϕB.setValue(1e-2, where=ϕB.value <= 0)
+            if ((ϕW + ϕB).value >= 1).any():
+                print("ϕW + ϕB too large")
+                ϕW.value[(ϕW+ϕB).value >= 1] *= 0.9
+                ϕB.value[(ϕW+ϕB).value >= 1] *= 0.9
+            elif (ϕW.value >= 1).any():
+                print("ϕW too large")
+                ϕW.setValue(1-1e-2, where=ϕW.value >= 1)
+            elif (ϕB.value >= 1).any():
+                print("ϕB too large")
+                ϕB.setValue(1-1e-2, where=ϕB.value >= 1)
+            continue
         elapsed += dt
         if elapsed >= t_save[snapshot]:
             print(f"t={elapsed:0.2f} / {duration}", end="\r")
@@ -348,9 +357,7 @@ if __name__ == "__main__":
             gname = f"n{snapshot:06d}"
             datadict = {"t": t_save[snapshot],
                         "phiW": ϕW.value,
-                        "phiB": ϕB.value,
-                        "mseW": mseW,
-                        "mseB": mseB}
+                        "phiB": ϕB.value}
             dump(h5file, gname, datadict)
             # save fipy
             fipyfile = f"n{snapshot:06d}.fipy"

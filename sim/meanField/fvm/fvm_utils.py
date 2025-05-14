@@ -52,7 +52,8 @@ def make_boundary(data, x_grid, y_grid, crs):
     shapes = features.shapes((1 - np.isnan(data)).astype(np.uint8), transform=affine)
     polygons = [geometry.Polygon(shape[0]["coordinates"][0]) for shape in shapes if shape[1] == 1]
 
-    grid_boundary = gpd.GeoDataFrame([polygons[0]], geometry=[polygons[0]])
+    # get boundary of largest polygon
+    grid_boundary = gpd.GeoDataFrame(geometry=polygons)
     # grid_boundary.geometry = grid_boundary[0]
     grid_boundary.crs = crs
     
@@ -85,11 +86,11 @@ def make_simple_boundary(data, x_grid, y_grid, crs,
     simple_boundary["dissolve_column"] = 0
     simple_boundary = simple_boundary.dissolve(by="dissolve_column")
     simple_boundary.geometry = simple_boundary.geometry.simplify(simplify)
-    
+
     return simple_boundary
 
 
-def get_coords(boundary):
+def get_coords(boundary, square=False):
     """
     Get (x,y) coordinates of boundary, to be used to make mesh
     """
@@ -98,14 +99,33 @@ def get_coords(boundary):
         xx, yy = boundary.boundary[0].geoms[longest].coords.xy
     else:
         xx, yy = boundary.boundary[0].coords.xy
-        
-    x = np.array(xx[:-1])
-    y = np.array(yy[:-1])
+    
+    if square:
+        gis_boundary = get_boundary(boundary)
+        minx, miny, maxx, maxy = np.min(xx), np.min(yy), np.max(xx), np.max(yy)
+        ptpx = maxx - minx
+        ptpy = maxy - miny 
+        boxx = np.array([minx + ptpx * 0.1, maxx - ptpx * 0.1])
+        # Lx = np.diff(boxx)
+        boxy = np.array([miny + ptpy * 0.1, maxy - ptpy * 0.1])
+        # Ly = np.diff(boxy)
+        # create triangular mesh over square region
+        # mesh, _ = make_mesh(edgesx, edgesy, cellsize)
+        # create square mesh over square region
+        # mesh = fp.Grid2D(nx=Lx / cellsize,
+        #                     ny=Ly / cellsize,
+        #                     Lx=Lx, Ly=Ly) + ((boxx[0],),(boxy[0],))
+        x = np.array([boxx[0], boxx[1], boxx[1], boxx[0]])
+        y = np.array([boxy[0], boxy[0], boxy[1], boxy[1]])
+    else:
+        x = np.array(xx[:-1])
+        y = np.array(yy[:-1])
     return x, y
 
 
 def make_mesh(data, x_grid, y_grid, crs,
-              buffer, simplify, cellsize):
+              buffer, simplify, cellsize,
+              square=False):
     """
     Start from data, create grid around non-nan values
     """
@@ -113,7 +133,7 @@ def make_mesh(data, x_grid, y_grid, crs,
     simple_boundary = make_simple_boundary(data, x_grid, y_grid,
                                            crs, buffer, simplify)
 
-    x, y = get_coords(simple_boundary)
+    x, y = get_coords(simple_boundary, square=square)
     
     points = [f'Point({idx+1}) = {{{round(x)}, {round(y)}, 0.0, {cellsize}}};' 
               for idx, (x, y) in enumerate(zip(x, y))]
