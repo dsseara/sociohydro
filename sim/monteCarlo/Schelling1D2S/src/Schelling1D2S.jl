@@ -1,0 +1,759 @@
+"""
+Module for 2-species, 1-dimensional Schelling model
+with bounded neighborhoods
+"""
+
+module Schelling1D2S
+
+using ProgressMeter
+using HDF5
+using Printf
+using DSP
+using StatsBase
+using LinearAlgebra
+using JSON
+
+export random_state, move!, gain, glauber_prob, utility, run_simulation!, run_simulation, save, select_particle, pick_sites, run_sweep!, load_data
+
+
+"""
+    run_simulation!(state::Matrix{Int64},
+                    params::Dict{String, Any},
+                    utilities::Function;
+                    sweep::Int64=0)
+
+Run a simulation of the 1D, 2 species Shelling model starting from a given 
+initial condition
+
+## Inputs
+- state : Array
+    - Nx2 array of initial state
+- params : Dict
+    - params["dt"] : float
+        - size of time-step
+    - params["n_sweeps"] : int
+        - total number of sweeps to perform
+    - params["capacity"] : int
+        - total number of agents allowed at each lattice site
+    - params["grid_size"] : int
+        - number of lattice sites
+    - params["fill"] : 2-element array
+        - what fraction of available sites are filled with agents of each type.
+        - Must sum to less than 1
+    - params["alpha"] : float in [0, 1] 
+        - magnitude of altruism
+        - NOT IMPLEMENTED
+    - params["temperature"] : 2-element array
+        - magnitude of temperature for each species
+        - float in [0, ∞)
+    - params["gamma"] : 2-element array
+        - magnitude of gradient penalty
+        - float in [0, ∞)
+    - params["snapshot"] : int
+        - number of sweeps between saving
+    - params["savepath"] : string
+        - path of where to save output
+    - params["filename"] : string
+        - name of data file
+- utilities : Function
+    - πA, πB = utilities(local_state::Vector{Int64}, capacity::Int64)
+    - returns the utilities of both groups.
+      Takes the local state (i.e the numbers of individuals at a single site)
+      and carrying capacity.
+- sweep : Int (optional)
+    - gives the starting sweep number of the simulation
+
+## Outputs
+- state : array
+    - NxMx2 array of integers that gives state of
+      the system after evolving for n_sweeps
+"""
+function run_simulation!(state::Matrix{Int64},
+                         params::Dict{String, Any},
+                         utilities::Function;
+                         sweep::Int64=0)
+    # sim params
+    dt = params["dt"]
+    n_sweeps = params["n_sweeps"]
+    capacity = params["capacity"]
+    Nx = params["grid_size"]
+    fill = params["fill"]
+    alpha = params["alpha"]
+    
+    if length(params["temperature"]) == 1
+        temp = [params["temperature"], params["temperature"]]
+    elseif length(params["temperature"]) == 2
+        temp = params["temperature"]
+    else
+        error("params['temperature'] must be length 1 or 2")
+    end
+
+    if length(params["gamma"]) == 1
+        gamma = [params["gamma"], params["gamma"]]
+    elseif length(params["gamma"]) == 2
+        gamma = params["gamma"]
+    else
+        error("params['gamma'] must be length 1 or 2")
+    end
+
+
+    # storage params
+    snapshot = params["snapshot"]
+    savepath = params["savepath"]
+    filename = params["filename"]
+
+
+    # calculate how many steps per sweep
+    total_occupants = sum(state)
+
+    # main loop
+    @showprogress 1 for ii in sweep+1:sweep+n_sweeps
+        run_sweep!(state,
+                   total_occupants,
+                   dt, capacity,
+                   Nx, fill,
+                   alpha, temp, gamma,
+                   utilities)
+        
+        if ii % snapshot == 0
+            save(state, params, sweep=ii)
+        end
+    end
+    
+    # save final state.
+    # At worst, overwrites itself
+    # save(state, params, sweep=n_sweeps)
+
+    return state
+end
+
+"""
+    run_simulation(params::Dict{String, Any},
+                   utilities::Function)
+
+Runs simulation starting from a random initial state
+
+## Inputs
+- params : Dict
+    - params["dt"] : float
+        - size of time-step
+    - params["n_sweeps"] : int
+        - total number of sweeps to perform
+    - params["capacity"] : int
+        - total number of agents allowed at each lattice site
+    - params["grid_size"] : int
+        - number of lattice sites
+    - params["fill"] : 2-element array
+        - what fraction of available sites are filled with agents of each type.
+        - Must sum to less than 1
+    - params["alpha"] : float in [0, 1] 
+        - magnitude of altruism
+        - NOT IMPLEMENTED
+    - params["temperature"] : 2-element array
+        - magnitude of temperature for each species
+        - float in [0, ∞)
+    - params["gamma"] : 2-element array
+        - magnitude of gradient penalty
+        - float in [0, ∞)
+    - params["snapshot"] : int
+        - number of sweeps between saving
+    - params["savepath"] : string
+        - path of where to save output
+    - params["filename"] : string
+        - name of data file
+- utilities : Function
+    - πA, πB = utilities(local_state::Vector{Int64}, capacity::Int64)
+    - returns the utilities of both groups.
+        Takes the local state (i.e the numbers of individuals at a single site)
+        and carrying capacity.
+
+## Outputs
+- state : array
+    - NxMx2 array of integers that gives state of
+      the system after evolving for n_sweeps
+
+"""
+function run_simulation(params::Dict{String, Any},
+                        utilities::Function)
+    savepath = params["savepath"]
+    filename = params["filename"]
+    
+    if haskey(params, "icType")
+        if params["icType"] == "random"
+            init_func = random_state
+        elseif params["icType"] == "hat"
+            init_func = hat_state
+        else
+            error("icType must be random or hat. Currently " * params["icType"])
+        end
+    else
+        init_func = random_state
+    end
+
+    # create random initial condition
+    state = init_func(params)
+
+    # create savepath
+    if isdir(savepath)
+        for file in readdir(savepath, join=true)
+            rm(file)
+        end
+    else
+        mkpath(savepath)
+    end
+
+    # save params and initial state
+    param_filename = filename * "_params.json"
+    open(savepath * "/" * param_filename, "w") do f
+        JSON.print(f, params, 4)
+    end
+    save(state, params, sweep=0)
+
+    # run simulation
+    run_simulation!(state, params, utilities,
+                    sweep=0)
+
+    return state
+end
+
+
+"""
+    random_state(params::Dict{String, Any})
+
+Creates a random state
+
+## Inputs
+- params : Dict
+    - params["grid_size"] : int
+        - number of lattice sites
+    - params["capacity"] : int
+        - maximum number of agents allowed at each lattice site
+    - params["fill"] : 2-element array
+        - what fraction of available sites are filled with agents of each type.
+        - Must sum to less than 1
+
+## Outputs
+- state : array
+    - NxMx2 array of integers that gives a random state of the system
+"""
+function random_state(params::Dict{String, Any})
+    # unpack parameters
+    Nx = params["grid_size"]
+    capacity = params["capacity"]
+    fill = params["fill"]
+
+    totals = Int.(floor.(Nx * capacity * fill))
+    locs = [rand(1:Nx, t) for t in totals]
+    state_vecvec = [[count(==(i), loc) for i in 1:Nx] for loc in locs]
+    state_matrix = reduce(hcat, state_vecvec)
+    return state_matrix
+end
+
+
+function hat_state(params::Dict{String, Any})
+    function heaviside(x, x0)
+        h = (sign(x) + 1)/2
+        if any(iszero.(x))
+            h[iszero.(x)] .= x0
+        end
+        return h
+    end
+    
+    function hat_func(x, center, height, width)
+        hat = height * (heaviside(x - center + width / 2, 1) - heaviside(x - center - width / 2, 1))
+        return hat
+    end
+
+    Nx = params["grid_size"]
+    capacity = params["capacity"]
+    fills = params["fill"]
+    hat_heights = params["hat_height"]
+
+    x = 1:Nx
+    widths = [Nx * fill / height for (fill, height) in zip(fills, hat_heights)]
+    centers = [-0.6, 0.6] .* widths .+ (x[end] + x[1])/2
+    heights = capacity .* hat_heights
+    hats = [hat_func.(x, c, h, w) + sample(0:10, length(x)) for (c, h, w) in zip(centers, heights, widths)]
+    return Int.(stack(hats))
+end
+
+"""
+    run_sweep!(state::Matrix{Int64},
+               n_steps::Int64, dt::Float64,
+               capacity::Int64, Nx::Int64,
+               fill::Vector{Float64},
+               alpha::Float64, temp::Vector{Float64},
+               gamma::Vector{Float64},
+               utilities::Function)
+
+Runs a single sweep of the monte carlo simulation
+"""
+function run_sweep!(state::Matrix{Int64},
+                    n_steps::Int64, dt::Float64,
+                    capacity::Int64, Nx::Int64,
+                    fill::Vector{Float64},
+                    alpha::Float64,
+                    temp::Vector{Float64},
+                    gamma::Vector{Float64},
+                    utilities::Function)
+    rs = rand(n_steps)
+    for jj in 1:n_steps
+        move!(state, dt, capacity, Nx, fill,
+              alpha, temp, gamma, utilities,
+              rs[jj])
+    end
+    return state
+end
+
+
+function move!(state::Matrix{Int64},
+               dt::Float64,
+               capacity::Int64,
+               Nx::Int64,
+               fill::Vector{Float64},
+               alpha::Float64,
+               temp::Vector{Float64},
+               gamma::Vector{Float64},
+               utilities::Function,
+               r::Float64)
+    # select particle to move and where to move to
+    from, tos, weights = pick_sites(state, capacity, Nx, fill)
+
+    # find gains of each move
+    Gs = gain(state, from, tos, alpha, capacity, Nx, gamma, utilities)
+    
+    # calculate probability of moving using Glauber-like rule
+    gprobs = glauber_prob(Gs, temp, dt)
+
+    probs = weights .* gprobs
+    # probs ./= sum(probs)
+
+    # use random number to select whether to move or not
+    idx = findfirst(cumsum(probs) .> r)
+
+    if !isnothing(idx)
+        state[from] -= 1
+        state[tos[idx]] += 1
+    end
+    # p = probs[i]
+    # while r > p
+    #     i += 1
+    #     p += probs[i]
+    # end
+
+    # if i <= length(tos)
+    #     state[from] -= 1
+    #     state[tos[i]] += 1
+    # end
+
+    # if r < prob_to_move
+    #     state[from] -= 1
+    #     state[to] += 1
+    # end
+
+end
+
+
+"""
+    pick_sites(state, capacity, Nx, fill)
+
+Function to find where to move a particle
+from and to
+"""
+function pick_sites(state::Matrix{Int64},
+                    capacity::Int64,
+                    Nx::Int64,
+                    fill::Vector{Float64})
+    
+    # select species weighted by their fill fractions
+    species = sample(Weights(fill))
+    # select a site to move from weighted by the number of particles in that site
+    site = sample(Weights(state[:, species]))
+    
+    # find neighboring sites
+    neighbors = [ifelse(site == Nx, 1, site + 1),  # right
+                 ifelse(site == 1, Nx, site - 1)]  # left
+    tos = [CartesianIndex(n, species) for n in neighbors]
+    # weight neighbors by number of vacancies
+    weights = [1 - (sum(state[n, :]) / capacity) for n in neighbors]
+    
+    # if sum(weights) == 0
+    #     # don't move
+    #     new_site = site
+    # else
+    #     new_site = neighbors[sample(Weights(weights))]
+    # end
+    
+    from = CartesianIndex(site, species)
+    # to = CartesianIndex(new_site, species)
+    
+    
+    return from, tos, weights
+end
+
+
+"""
+    gain(from, to, mover, params)
+
+Calculate gain in utility
+
+## Inputs
+- state : Matrix{Int64}
+    - current state of system. size Nx2, where N is number of sites
+- from : 2-element CartesianIndex
+    - gives who is moving (species) and from where (site)
+    - given as (site, species)
+- tos : 2-element array of CartesianIndex's
+    - gives who is moving (species) and where they could move (site)
+    - each element given as (site, species)
+- alpha : float
+    - altruism parameter
+- capacity : integer
+    - total capacity of each site
+- Nx : integer
+    - number of sites
+- gamma : 2-element array of floats
+    - strength of gradient penalty
+- utilities : function
+    - function that takes the state of a site and returns
+      a 2-element array of the utilities of each species
+
+## Outputs
+- Gs : 2-element of array
+    - gains of moving to each site given in tos
+"""
+function gain(state::Matrix{Int64},
+              from::CartesianIndex{2},
+              tos::Array{CartesianIndex{2}, 1},
+              alpha::Float64,
+              capacity::Int64,
+              Nx::Int64,
+              gamma::Vector{Float64},
+              utilities::Function)
+
+    # state_new = copy(state_old)
+    # state_new[from] -= 1
+    # state_new[to] += 1
+    ∆N = [0, 0]
+    ∆N[from[2]] = 1
+
+    state_from_new = state[from[1], :] - ∆N
+    state_from_old = state[from[1], :]
+
+    # preallocate gains for each choice of
+    # where to move to
+    Gs = Array{Float64}(undef, length(tos))
+    altruistic = Array{Float64}(undef, length(tos))
+
+    # calculate utilities of origin location before and after move
+    # common to all options of where to move to
+    utility_from_old = utilities(state_from_old, capacity)
+    utility_from_new = utilities(state_from_new, capacity)
+
+    for (toidx, to) in enumerate(tos)
+        state_to_new = state[to[1], :] + ∆N
+        state_to_old = state[to[1], :]
+
+        utility_to_old = utilities(state_to_old,  capacity)
+        utility_to_new = utilities(state_to_new,  capacity)
+
+        # calculate change in utility only of mover
+        selfish = utility_to_new[from[2]] - utility_from_old[from[2]]
+
+        # calculate change in utility of everyone
+        altruistic = @. (state_to_new * utility_to_new
+                         - state_to_old * utility_to_old
+                         + state_from_new * utility_from_new
+                         - state_from_old * utility_from_old)
+        ΔU = sum(altruistic)
+
+        # calculate change in gradient penalizing term, n ∇^2 ϕ
+        # got this from using mathematica to find expression for
+        # difference of finite differences
+        direction = Int(to[1] - from[1] - round((to[1] - from[1]) / Nx) * Nx) # use pbc
+        lap_diff = (-state[mod1(from[1] - direction, Nx), from[2]]
+                    + 3 * state[from] - 3 * state[to]
+                    + state[mod1(to[1] + direction, Nx), to[2]] - 3) / capacity
+
+        Gs[toidx] = alpha * ΔU + (1 - alpha) * selfish + gamma[from[2]] * lap_diff
+    end
+
+    return Gs
+end
+
+
+"""
+    glauber_prob(ΔGs, params)
+
+Calculate update probability using glauber-like dynamics.
+Note that we are doing gain maximization,
+which introduces an extra minus sign compared to
+energy minimization
+
+## Inputs
+- deltaG : Float
+    - change in whatever gain function is used
+- params : Dict
+    - params["temperature"] : Float
+        - Temperature (quantifies error) 
+
+## Outputs
+- p : Float
+    - probability of accepting move. 0 < p < 1
+"""
+function glauber_prob(ΔGs::Array{T, 1},
+                      temp::Array{T}, dt::T) where T<:AbstractFloat
+
+    # get probability of each move
+    ps = Array{Float64}(undef, length(ΔGs))
+    @. ps = 2 * temp * dt / (1 + exp(-ΔGs / temp))
+
+    # for (gidx, ΔG) in enumerate(ΔGs)
+    #     # ps[gidx] = ifelse(temp == 0,
+    #     #                   (sign(ΔG) + 1) * 0.5,
+    #     #                   2 * temp * dt / (1 + exp(-ΔG / temp)))
+    #     ps[gidx] = 2 * temp * dt / (1 + exp(-ΔG / temp))
+    # end
+
+    # add probability of not moving
+    # ps[end] = 1 - sum(ps[1:end-1])
+
+    return ps
+end
+
+
+"""
+    asymmetric_utility(x, params)
+
+Calculate the asymmetric utility function for an array
+
+## Inputs
+- x : 2-element array
+    - fill fraction of each species.
+      each element of x in [0, 1]
+- params : Dict
+    - preferred_density : Float
+        - value of density that maximizes the utility.
+          params["preferred_density"] in [0, 1]
+    - m : Float
+        - how much you prefer x = 1. params["m"] in [0, 1]
+    - delta : Float
+        - how much species affect each other. Between [-1, 1]
+
+## Outputs
+- utility : 2-element array
+    - utility of each species, between [0, 1]
+"""
+# function asymmetric_utility(x::Vector{T} where {T<:Real},
+#                             params::Dict{String, Any})
+#     # unpack parameters
+#     x0 = params["preferred_density"]
+#     m = params["m"]
+#     delta = params["delta"]
+    
+#     xA, xB = x
+    
+#     if xA < x0
+#         uA = 2 * xA
+#     else
+#         uA = m +  2 * (1 - m) * (1 - xA)
+#     end
+    
+#     if xB < x0
+#         uB = 2 * xB
+#     else
+#         uB = m +  2 * (1 - m) * (1 - xB)
+#     end
+    
+#     utility = [uA + delta * uB,
+#                uB - delta * uA]
+
+#     return utility
+# end
+
+
+"""
+    utility(x, params)
+
+Calculate the linear utility function for an array
+
+## Inputs
+- x : 2-element array
+    - fill fraction of each species.
+      each element of x in [0, 1]
+- params : Dict
+    - delta : Float
+        - how much species affect each other. Between [-1, 1]
+
+## Outputs
+- utility : 2-element array
+    - utility of each species, between [0, 1]
+"""
+# function utility(n::Vector{Int64},
+#                  capacity::Int64,
+#                  delta::T, kappa::T) where T<:AbstractFloat
+#     πs = Vector{Float64}(undef, 2)
+    
+#     nA, nB = n
+#     ϕA = nA / capacity
+#     ϕB = nB / capacity
+    
+#     # don't count self as a neighbor
+#     # uA = 4 * (ϕA - capacity^(-1)) * (1 - (ϕA - capacity^(-1)))
+#     uA = (ϕA - capacity^(-1))
+#     # uB = 4 * (ϕB - capacity^(-1)) * (1 - (ϕB - capacity^(-1)))
+#     uB = (ϕB - capacity^(-1))
+    
+#     πs = [uA + (kappa - delta) * ϕB / 2,
+#           uB + (kappa + delta) * ϕA / 2]
+
+#     return πs
+# end
+
+
+function save(state::Matrix{T},
+              params::Dict{String, Any};
+              sweep::T = -1) where T<:Integer
+    savepath = params["savepath"]
+    n_sweeps = params["n_sweeps"]
+    filename = params["filename"] * ".hdf5"
+
+    npad = Int(ceil(log10(n_sweeps)) + 1)
+
+    groupname = "n" * lpad(string(sweep), npad, '0')
+    
+    if Sys.isunix()
+        filesep = "/"
+    else
+        filesep = "\\"
+    end
+        
+    filepath = savepath * filesep * filename
+    
+    h5open(filepath, "cw") do fid
+        if !(groupname in keys(fid))
+            d = create_group(fid, groupname)
+            d["state"] = state
+            d["sweep"] = sweep
+        end
+    end
+end
+
+searchdir(path, key) = filter(x->occursin(key,x), readdir(path, join=true))
+
+function load_data(path)
+    file = searchdir(path, "hdf5")[1]
+    params = JSON.parsefile(searchdir(path, "json")[1])
+
+    x = collect(1:params["grid_size"])
+
+    h5open(file, "r") do d
+        groups = keys(d)
+        t = Array{Float64}(undef, length(groups))
+        ϕA = Array{Float64}(undef, params["grid_size"], length(groups))
+        ϕB = Array{Float64}(undef, params["grid_size"], length(groups))
+        for (gidx, g) in enumerate(groups)
+            state = read(d[g], "state")
+            ϕA[:, gidx] = state[:, 1]
+            ϕB[:, gidx] = state[:, 2]
+            t[gidx] = read(d[g], "sweep")
+        end
+        return ϕA ./ params["capacity"], ϕB ./ params["capacity"], x, t .* params["dt"], params
+    end
+end
+
+
+# # use this version if you want to compare two snapshots only
+# function save(state_init::Matrix{T},
+#               state::Matrix{T},
+#               params::Dict{String, Any};
+#               sweep::T = -1) where {T<:Integer}
+    
+#     savepath = params["savepath"]
+#     mkpath(savepath)
+    
+#     if sweep < 0
+#         filename = "t0_tFinal.hdf5"
+#     else
+#         filename = "t0_t" * Printf.format(Printf.Format("%04d"), sweep) * ".hdf5"
+#     end
+    
+#     if Sys.isunix()
+#         filesep = "/"
+#     else
+#         filesep = "\\"
+#     end
+        
+#     filepath = savepath * filesep * filename
+    
+#     h5open(savepath, "w") do fid
+#         d = create_group(fid, "data")
+#         p = create_group(fid, "params")
+#         d["state"] = state
+#         d["state_init"] = state_init
+#         for (key, val) in params
+#             if key == "utility_func"
+#                 val = string(val)
+#             end
+#             p[key] = val
+#         end
+#     end
+# end
+
+# function save(state::Matrix{Int64},
+#               params::Dict{String, Any},
+#               savefolder::String,
+#               filename::String)
+    
+#     mkpath(savefolder)
+#     savepath = savefolder * "/" * filename
+    
+#     h5open(savepath, "w") do fid
+#         d = create_group(fid, "data")
+#         p = create_group(fid, "params")
+#         d["state"] = state
+#         for (key, val) in params
+#             if key == "utility_func"
+#                 val = string(val)
+#             end
+#             p[key] = val
+#         end
+#     end
+# end
+
+# function moving_average_periodic(arr::Vector{Int}, box_size::Int)
+#     kernel = Windows.gaussian(box_size, 0.1) # create kernel
+#     kernel /= sum(kernel)  # normalize kernel
+#     half_box = Int(floor(box_size / 2))
+#     arr_periodic = cat(arr[end-half_box+1:end], arr, arr[1:half_box], dims=1)
+#     c = conv(arr_periodic, kernel) # apply convolution
+#     return c[box_size:end-box_size+1]
+# end
+
+# function moving_average_periodic(arr::Matrix{Int}, box_size::Int; dims::Int)
+#     m(x) = moving_average_periodic(x, box_size)
+#     c = mapslices(m, arr, dims=dims)
+#     return c
+# end
+
+# function local_average(arr::Vector{T}, site::T, box_size::T;
+#                        dims::T=1, width::Float64 = 1.0) where T<:Integer
+#     kernel = Windows.gaussian(box_size, width) # create kernel
+#     kernel /= sum(kernel)  # normalize kernel
+#     half_box = Int(floor(box_size / 2))
+#     arr_periodic = cat(arr[end-half_box+1:end], arr, arr[1:half_box], dims=dims)
+    
+#     psite = half_box + site
+    
+#     c = sum(arr_periodic[psite - half_box:psite + half_box] .* kernel)
+
+#     return c
+# end
+
+# function local_average(arr::Matrix{T}, site::T, box_size::T; dims::T=1) where T<:Integer
+#     la(x) = local_average(x, site, box_size)
+#     c = mapslices(la, arr, dims=dims)
+#     return vec(c)
+# end
+
+end
