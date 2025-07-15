@@ -1,0 +1,31 @@
+# Template configuration file for Sociohydro mean field simulation
+# Copy this file and modify the parameters as needed
+
+simulation:
+  Lx: 40.0          # System size
+  Nx: 64            # Number of spatial points (should be power of 2 for FFT)
+  t_stop: 100.0      # Total simulation time
+  dt: 0.01          # Time step (check stability condition)
+  dealias: 1.5      # Dealiasing factor for spectral methods
+  save_dt: 1.0      # How often to save output
+  savepath: "output_template"  # Output directory
+
+sociohydro:
+  Gamma: 1.0        # Stabilizing strength (higher = more stable)
+  T: 0.1            # Temperature (plays role of diffusion constant)
+  fillA: 0.25       # Initial fill fraction of agent A
+  fillB: 0.25       # Initial fill fraction of agent B
+
+utility:
+  args_A:
+    k_ii: 1.0     # Self-interaction coefficient for agent A
+    k_ij: 1.0     # Cross-interaction coefficient for agent A
+    v_iii: 0.0     # Self-interaction quadratic coefficient for agent A
+    v_iij: 0.0     # Cross-interaction quadratic coefficient for agent A
+    v_ijj: 0.0     # Other-interaction quadratic coefficient for agent A
+  args_B:
+    k_ii: 1.0     # Self-interaction coefficient for agent B
+    k_ij: -1.0     # Cross-interaction coefficient for agent B
+    v_iii: 0.0     # Self-interaction quadratic coefficient for agent B
+    v_iij: 0.0     # Cross-interaction quadratic coefficient for agent B
+    v_ijj: 0.0     # Other-interaction quadratic coefficient for agent B
