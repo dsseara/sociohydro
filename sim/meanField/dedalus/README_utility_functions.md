@@ -61,7 +61,7 @@ utility:
 ### Basic Usage
 
 ```bash
-python sociohydro1D2S_meanField.py config.yaml
+python sociohydro1D2S_meanField.py configs/template.yaml
 ```
 
 ## Example Configurations
