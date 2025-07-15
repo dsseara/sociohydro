@@ -1,25 +1,25 @@
-# Generic Quadratic Utility Functions for Sociohydro Mean Field Simulation
+# Sociohydro `dedalus` simulation
 
-This document explains how to use the generic quadratic utility function system in the Sociohydro mean field simulation with YAML configuration files.
+This document explains how to simulation the Sociohydro mean field equations using `dedalus` with parameters from YAML configuration files.
 
 ## Overview
 
 The equation of motion is given by
-$$
-\partial_t \phi_a(x, t) = \nabla \cdot \left( T\left( \phi_0 \nabla \phi_a - \phi_a \nabla \phi_0 \right) - \phi_a \phi_0 \nabla \pi_a - \Gamma \phi_a \phi_0 \nabla^3 \phi_a \right)
-$$
+
+$$\partial_t \phi_a(x, t) = \nabla \cdot \left( T\left( \phi_0 \nabla \phi_a - \phi_a \nabla \phi_0 \right) - \phi_a \phi_0 \nabla \pi_a - \Gamma \phi_a \phi_0 \nabla^3 \phi_a \right)$$
+
 where $\phi_a \in [0, 1]$ is the fill fraction of group $a \in [A, B]$. The factors of $\phi_0 = 1 - \sum_j \phi_j$ measure the vacancy fill fraction, and modulates the dynamics to take into account volume exclusion.
 The first term describes diffusion (note that $\phi_0 \to 0$ leads to standard Fickian diffusion).
 The second term describes advection with a velocity $\mathbf{v} = \nabla \pi^a(\vec{\phi})$, where the utility function $\pi_a(\vec{\phi})$ measures how much an agent of type $a$ likes an area with occupation configuration $\vec{\phi} = (\phi^A, \phi^B)$.
 The third term acts as a surface tension, penalizing spatial gradients in the fields $\phi_a$.
 
 The simulation uses a generic quadratic utility given by
-$$
-\pi_a =  \kappa_{ab} \phi_b + \nu_{abc} \phi_b \phi_c,
-$$
+
+$$\pi_a =  \kappa_{ab} \phi_b + \nu_{abc} \phi_b \phi_c,$$
+
 where we use Einstein notation to imply summation over repeated indices.
 
-This simulation uses Dedalus to solve the equations in 1D over periodic boundary conditions.
+This simulation uses Dedalus to solve the equations in 1D over periodic boundary conditions. Due to the need to separate the linear from non-linear parts of the equation of motion, the `problem.add_equation` expressions look slightly different from the above, which mostly comes from plugging in the expression for $\phi_0$.
 
 ## Configuration File Structure
 
@@ -147,38 +147,8 @@ class MyCustomUtility(UtilityFunction):
 
 Then modify the main script to use your custom utility function and add corresponding YAML parameters.
 
-## Running Examples
-
-Use the provided example script to run multiple simulations:
-
-```bash
-python example_usage.py
-```
-
-This will run various scenarios demonstrating different utility function configurations.
-
 ## Output
 
 The simulation saves:
 1. HDF5 files with time series data
-2. Parameter file (`params.json`) with the complete configuration
-3. Kymograph plots showing the evolution of φ_A, φ_B, and φ_A - φ_B
-
-## Advantages of YAML Configuration
-
-1. **Readability**: Human-readable configuration format
-2. **Modularity**: Easy to create and modify configurations
-3. **Reproducibility**: Complete parameter sets saved with results
-4. **Parameter Sweeps**: Easy to generate multiple configurations
-5. **Version Control**: Configurations can be tracked in git
-6. **Documentation**: Comments and structure make parameters self-documenting
-
-## Notes
-
-- The utility functions are evaluated at each spatial point and time step
-- Derivatives are computed analytically for efficiency
-- The system supports asymmetric utilities between agents A and B
-- All parameters are saved in the output for reproducibility
-- Missing parameters in YAML files are filled with sensible defaults
-- The generic quadratic form reduces to linear when all quadratic coefficients (v_*) are set to zero
-- The utility function can represent complex interactions including diminishing returns, competition, and cooperation 
+2. Parameter file (`config.yaml`) with the complete configuration
