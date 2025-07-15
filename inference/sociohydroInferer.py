@@ -136,9 +136,8 @@ class SociohydroInfer():
     def differentiate(self, x, f, order, periodic, axis,
                       window_length=5, polyorder=4,
                       smooth=True, smooth_polyorder=2):
-        nans = np.isnan(f)
         if self.diff_method == "savgol":
-            dfdx = savgol_deriv(x, np.nan_to_num(f),
+            dfdx = savgol_deriv(x, f,
                                 window_length=window_length,
                                 polyorder=polyorder,
                                 order=order,
@@ -147,13 +146,11 @@ class SociohydroInfer():
                                 smooth=smooth,
                                 smooth_polyorder=smooth_polyorder)
         elif self.diff_method == "fd":
-            dfdx = fd_deriv(x, np.nan_to_num(f),
+            dfdx = fd_deriv(x, f,
                             order=order,
                             axis=axis)
         else:
             raise NotImplementedError("Only savgol or fd derivatives available")
-        # replace nans with original values
-        dfdx[nans] = np.nan
 
         return dfdx
     
