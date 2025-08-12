@@ -1,0 +1,34 @@
+{
+  "n_epochs": 100,
+  "batch_size": 2,
+  "accumulate_grad_batches": 8,
+  "sigma": 5,
+  "savename": "models/SimulationForecasting_sigma5_0",
+  "train_folder": [
+    "/project/vitelli/dsseara/ising/2024-04-15_kawasaki/data/n12",
+    "/project/vitelli/dsseara/ising/2024-04-15_kawasaki/data/n12",
+    "/project/vitelli/dsseara/ising/2024-04-15_kawasaki/data/n16",
+    "/project/vitelli/dsseara/ising/2024-04-15_kawasaki/data/n07",
+    "/project/vitelli/dsseara/ising/2024-04-15_kawasaki/data/n06",
+    "/project/vitelli/dsseara/ising/2024-04-15_kawasaki/data/n02",
+    "/project/vitelli/dsseara/ising/2024-04-15_kawasaki/data/n09",
+    "/project/vitelli/dsseara/ising/2024-04-15_kawasaki/data/n16",
+    "/project/vitelli/dsseara/ising/2024-04-15_kawasaki/data/n04",
+    "/project/vitelli/dsseara/ising/2024-04-15_kawasaki/data/n04",
+    "/project/vitelli/dsseara/ising/2024-04-15_kawasaki/data/n15",
+    "/project/vitelli/dsseara/ising/2024-04-15_kawasaki/data/n05"
+  ],
+  "val_folder": [
+    "/project/vitelli/dsseara/ising/2024-04-15_kawasaki/data/n11",
+    "/project/vitelli/dsseara/ising/2024-04-15_kawasaki/data/n03",
+    "/project/vitelli/dsseara/ising/2024-04-15_kawasaki/data/n17",
+    "/project/vitelli/dsseara/ising/2024-04-15_kawasaki/data/n18",
+    "/project/vitelli/dsseara/ising/2024-04-15_kawasaki/data/n20",
+    "/project/vitelli/dsseara/ising/2024-04-15_kawasaki/data/n19",
+    "/project/vitelli/dsseara/ising/2024-04-15_kawasaki/data/n13",
+    "/project/vitelli/dsseara/ising/2024-04-15_kawasaki/data/n01",
+    "/project/vitelli/dsseara/ising/2024-04-15_kawasaki/data/n08",
+    "/project/vitelli/dsseara/ising/2024-04-15_kawasaki/data/n14",
+    "/project/vitelli/dsseara/ising/2024-04-15_kawasaki/data/n10"
+  ]
+}

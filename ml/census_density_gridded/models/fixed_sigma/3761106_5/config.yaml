@@ -1,0 +1,60 @@
+dataset:
+  kwargs:
+    use_fill_frac: false
+    use_max_scaling: true
+  train_counties:
+  - Ohio_Franklin
+  - Texas_Dallas
+  - New York_Queens
+  - Michigan_Wayne
+  - Washington_King
+  - Florida_Hillsborough
+  - New York_Suffolk
+  - Texas_Tarrant
+  - Nevada_Clark
+  - Florida_Broward
+  - Minnesota_Hennepin
+  - Ohio_Cuyahoga
+  - Pennsylvania_Philadelphia
+  - California_Alameda
+  - Massachusetts_Middlesex
+  - Florida_Palm Beach
+  - Arizona_Maricopa
+  - Virginia_Fairfax
+  - Michigan_Oakland
+  - California_Santa Clara
+  - New York_Nassau
+  - Florida_Orange
+  - California_Orange
+  - California_Riverside
+  - Pennsylvania_Allegheny
+  - California_Sacramento
+  - Texas_Bexar
+  - California_San Diego
+  - New York_Kings
+  - Utah_Salt Lake
+  - California_Contra Costa
+  val_counties:
+  - Georgia_Fulton
+  - Illinois_Cook
+  - Texas_Harris
+  - California_Los Angeles
+  val_tmax: 10
+model:
+  args:
+    input_dim: 3
+    output_dim: 2
+    use_housing: true
+  class_path: census_nn.CensusForecasting
+  weights: models/3761106_5/model_weight.ckpt
+optimizer:
+  args:
+    lr: 0.0003
+  class_path: torch.optim.Adam
+scheduler:
+  args:
+    gamma: 0.98
+  class_path: torch.optim.lr_scheduler.ExponentialLR
+training:
+  batch_size: 8
+  n_epochs: 100

@@ -1,0 +1,42 @@
+{
+  "n_epochs": 200,
+  "batch_size": 32,
+  "savename": "models/SimulationForecasting_migration2_3",
+  "dynamic_type": "migration2",
+  "train_folder": [
+    "/home/jcolen/data/sociohydro/2024-03-26_MCPhaseDiagram/data/km1.60_kp0.72",
+    "/home/jcolen/data/sociohydro/2024-03-26_MCPhaseDiagram/data/km0.64_kp0.72",
+    "/home/jcolen/data/sociohydro/2024-03-26_MCPhaseDiagram/data/km1.28_kp-0.24",
+    "/home/jcolen/data/sociohydro/2024-03-26_MCPhaseDiagram/data/km0.96_kp0.40",
+    "/home/jcolen/data/sociohydro/2024-03-26_MCPhaseDiagram/data/km1.60_kp-0.88",
+    "/home/jcolen/data/sociohydro/2024-03-26_MCPhaseDiagram/data/km1.28_kp-0.56",
+    "/home/jcolen/data/sociohydro/2024-03-26_MCPhaseDiagram/data/km1.28_kp1.04",
+    "/home/jcolen/data/sociohydro/2024-03-26_MCPhaseDiagram/data/km1.60_kp0.72",
+    "/home/jcolen/data/sociohydro/2024-03-26_MCPhaseDiagram/data/km1.28_kp-0.56",
+    "/home/jcolen/data/sociohydro/2024-03-26_MCPhaseDiagram/data/km1.28_kp1.68",
+    "/home/jcolen/data/sociohydro/2024-03-26_MCPhaseDiagram/data/km1.28_kp0.72",
+    "/home/jcolen/data/sociohydro/2024-03-26_MCPhaseDiagram/data/km1.28_kp0.72",
+    "/home/jcolen/data/sociohydro/2024-03-26_MCPhaseDiagram/data/km1.28_kp-0.56",
+    "/home/jcolen/data/sociohydro/2024-03-26_MCPhaseDiagram/data/km1.60_kp-0.56",
+    "/home/jcolen/data/sociohydro/2024-03-26_MCPhaseDiagram/data/km1.28_kp0.40",
+    "/home/jcolen/data/sociohydro/2024-03-26_MCPhaseDiagram/data/km1.60_kp0.72"
+  ],
+  "val_folder": [
+    "/home/jcolen/data/sociohydro/2024-03-26_MCPhaseDiagram/data/km0.32_kp0.40",
+    "/home/jcolen/data/sociohydro/2024-03-26_MCPhaseDiagram/data/km0.32_kp0.72",
+    "/home/jcolen/data/sociohydro/2024-03-26_MCPhaseDiagram/data/km0.64_kp0.08",
+    "/home/jcolen/data/sociohydro/2024-03-26_MCPhaseDiagram/data/km0.64_kp0.40",
+    "/home/jcolen/data/sociohydro/2024-03-26_MCPhaseDiagram/data/km0.96_kp-0.24",
+    "/home/jcolen/data/sociohydro/2024-03-26_MCPhaseDiagram/data/km0.96_kp0.08",
+    "/home/jcolen/data/sociohydro/2024-03-26_MCPhaseDiagram/data/km0.96_kp0.72",
+    "/home/jcolen/data/sociohydro/2024-03-26_MCPhaseDiagram/data/km0.96_kp1.04",
+    "/home/jcolen/data/sociohydro/2024-03-26_MCPhaseDiagram/data/km1.28_kp0.08",
+    "/home/jcolen/data/sociohydro/2024-03-26_MCPhaseDiagram/data/km1.28_kp1.36",
+    "/home/jcolen/data/sociohydro/2024-03-26_MCPhaseDiagram/data/km1.60_kp-0.24",
+    "/home/jcolen/data/sociohydro/2024-03-26_MCPhaseDiagram/data/km1.60_kp0.08",
+    "/home/jcolen/data/sociohydro/2024-03-26_MCPhaseDiagram/data/km1.60_kp0.40",
+    "/home/jcolen/data/sociohydro/2024-03-26_MCPhaseDiagram/data/km1.60_kp1.04",
+    "/home/jcolen/data/sociohydro/2024-03-26_MCPhaseDiagram/data/km1.60_kp1.36",
+    "/home/jcolen/data/sociohydro/2024-03-26_MCPhaseDiagram/data/km1.60_kp1.68"
+  ]
+}
