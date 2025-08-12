@@ -14,6 +14,8 @@ Sociohydrodynamics applies hydrodynamic principles to social phenomena, combinin
 
 Each folder contains its own `README` file describing their contents.
 
+Note that the contents of the `ml/` folder are taken from a separate repository by Jonathan Colen, [found here](https://github.com/jcolen/sociohydro).
+
 ## Getting Started
 
 1. Install dependencies: `conda env create -f sociohydro_environment.yml`
